@@ -752,5 +752,285 @@ document.addEventListener('keydown', function (e) {
 })();
 
 </script>
+<script>
+/* CONVERSATION PANEL — threaded chat per contact / channel.
+   Reads from /api/messages (GET) and /api/messages/fetch (POST+CSRF).
+   Sends via /api/send (POST+CSRF). Self-contained, no deps. */
+(function(){
+  // ── state ──────────────────────────────────────────────────────────────
+  var threads = {};      // id -> [{dir:'in'|'out', who, text, at}]
+  var activeId = null;
+  var contacts = [];     // [{id, name, kind}]
+  var _csrf = null;
+  var _pollTimer = null;
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  // ── session / csrf ──────────────────────────────────────────────────────
+  function getCSRF(){
+    return fetch('/api/session',{credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(s){ _csrf = s.csrf || _csrf; return _csrf; });
+  }
+
+  // ── message ingestion ───────────────────────────────────────────────────
+  var _seen = new Set();
+
+  function ingest(msgs, direction){
+    var changed = false;
+    (msgs||[]).forEach(function(m){
+      var key = m.raw || (m.scope+'|'+m.sender+'|'+m.text);
+      if (_seen.has(key)) return;
+      _seen.add(key);
+      // scope → thread id
+      var scope = String(m.scope||'').toLowerCase();
+      var tid = scope.startsWith('public') || scope.startsWith('chan')
+                ? 'chan:0' : 'dm:' + (m.scope||'').trim();
+      if (!threads[tid]) threads[tid] = [];
+      threads[tid].push({
+        dir: direction||'in',
+        who: m.sender || (direction==='out' ? 'you' : m.scope),
+        text: m.text||'',
+        at: m.at || new Date().toTimeString().slice(0,8)
+      });
+      changed = true;
+      // ensure sidebar has this thread even if not in contacts list
+      if (!contacts.find(function(c){return c.id===tid;})) {
+        var label = tid.startsWith('chan:') ? 'Public channel' : (m.scope||tid.slice(3));
+        contacts.push({id:tid, name:label, kind: tid.startsWith('chan:') ? 'public' : 'node'});
+      }
+    });
+    return changed;
+  }
+
+  function fetchMessages(radio){
+    return getCSRF().then(function(csrf){
+      var url = radio ? '/api/messages/fetch' : '/api/messages';
+      var opts = {credentials:'same-origin',
+                  headers:{'Content-Type':'application/json','X-CSRF-Token':csrf||''}};
+      if (radio) opts.method = 'POST';
+      return fetch(url, opts).then(function(r){return r.json();});
+    }).then(function(j){
+      var changed = ingest(j.messages, 'in');
+      if (changed) renderSidebar(); renderThread();
+    }).catch(function(){});
+  }
+
+  // ── DOM helpers ─────────────────────────────────────────────────────────
+  function panel(){ return document.getElementById('cv-panel'); }
+
+  function renderSidebar(){
+    var ul = document.getElementById('cv-list');
+    if (!ul) return;
+    // merge contacts from destinations
+    var dest = (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
+    dest.forEach(function(d){
+      if (!contacts.find(function(c){return c.id===d.id;}))
+        contacts.push(d);
+    });
+    var sorted = contacts.slice().sort(function(a,b){
+      // threads with messages first
+      var ha = (threads[a.id]||[]).length, hb = (threads[b.id]||[]).length;
+      return (hb>0?1:0)-(ha>0?1:0) || String(a.name).localeCompare(String(b.name));
+    });
+    ul.innerHTML = sorted.map(function(c){
+      var unread = threads[c.id] ? threads[c.id].length : 0;
+      var last = threads[c.id] && threads[c.id].length
+                 ? threads[c.id][threads[c.id].length-1] : null;
+      var preview = last ? esc(last.text.slice(0,28))+(last.text.length>28?'…':'') : '';
+      var active  = c.id === activeId ? ' cv-active' : '';
+      return '<div class="cv-row'+active+'" data-id="'+esc(c.id)+'">' +
+        '<div class="cv-name">'+esc(c.name)+'</div>' +
+        (preview ? '<div class="cv-preview">'+preview+'</div>' : '') +
+        '</div>';
+    }).join('');
+    ul.querySelectorAll('.cv-row').forEach(function(el){
+      el.addEventListener('click',function(){
+        activeId = el.dataset.id;
+        renderSidebar();
+        renderThread();
+        var hdr = document.getElementById('cv-hdr');
+        if (hdr) {
+          var c = contacts.find(function(x){return x.id===activeId;});
+          hdr.textContent = c ? c.name : activeId;
+        }
+      });
+    });
+  }
+
+  function renderThread(){
+    var box = document.getElementById('cv-thread');
+    if (!box) return;
+    if (!activeId) { box.innerHTML='<div class="cv-empty">Select a contact to start.</div>'; return; }
+    var msgs = threads[activeId] || [];
+    if (!msgs.length){ box.innerHTML='<div class="cv-empty">No messages yet.</div>'; return; }
+    box.innerHTML = msgs.map(function(m){
+      var out = m.dir === 'out';
+      return '<div class="cv-msg '+(out?'cv-out':'cv-in')+'">' +
+        '<span class="cv-who">'+(out?'you':esc(m.who))+'</span>' +
+        '<span class="cv-at">'+esc(m.at)+'</span>' +
+        '<div class="cv-txt">'+esc(m.text)+'</div>' +
+        '</div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // ── send ────────────────────────────────────────────────────────────────
+  function sendReply(){
+    var inp = document.getElementById('cv-compose');
+    var btn = document.getElementById('cv-send');
+    if (!inp || !activeId) return;
+    var text = inp.value.trim();
+    if (!text) return;
+    btn.disabled = true;
+    getCSRF().then(function(csrf){
+      return fetch('/api/send',{
+        method:'POST', credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':csrf||''},
+        body: JSON.stringify({targets:[activeId], text:text})
+      }).then(function(r){return r.json();});
+    }).then(function(j){
+      btn.disabled = false;
+      if (!j.ok && j.results && j.results[0] && !j.results[0].ok) {
+        var err = document.getElementById('cv-err');
+        if (err) { err.textContent = j.results[0].out||'send failed'; setTimeout(function(){err.textContent='';},4000); }
+        return;
+      }
+      // optimistically add to thread
+      if (!threads[activeId]) threads[activeId]=[];
+      var ts = new Date().toTimeString().slice(0,8);
+      threads[activeId].push({dir:'out',who:'you',text:text,at:ts});
+      inp.value='';
+      renderThread();
+    }).catch(function(e){
+      btn.disabled=false;
+      var err=document.getElementById('cv-err');
+      if(err){err.textContent=String(e);setTimeout(function(){err.textContent='';},4000);}
+    });
+  }
+
+  // ── inject UI ───────────────────────────────────────────────────────────
+  function addPanel(){
+    if (panel()) return;
+    // wait until app section is visible (user is signed in)
+    var app = document.getElementById('app');
+    if (!app || app.classList.contains('hide')) return;
+    var card = document.createElement('div');
+    card.id = 'cv-panel';
+    card.innerHTML =
+      '<div class="dgroup" style="margin-bottom:10px">Conversations</div>' +
+      '<div id="cv-body">' +
+        '<div id="cv-sidebar">' +
+          '<div id="cv-list"></div>' +
+          '<button type="button" id="cv-fetch" class="chip" style="margin-top:8px;width:100%">Fetch new</button>' +
+        '</div>' +
+        '<div id="cv-main">' +
+          '<div id="cv-hdr">Select a conversation</div>' +
+          '<div id="cv-thread"><div class="cv-empty">Select a contact to start.</div></div>' +
+          '<div id="cv-compose-row">' +
+            '<textarea id="cv-compose" placeholder="Type a reply…" rows="2"></textarea>' +
+            '<button type="button" id="cv-send">Send</button>' +
+          '</div>' +
+          '<div id="cv-err" style="color:var(--bad);font-size:12px;min-height:16px"></div>' +
+        '</div>' +
+      '</div>';
+    // insert before range test card or at end of main
+    var rt = document.getElementById('range-card');
+    var inbox = document.getElementById('inbox');
+    var anchor = rt || inbox;
+    if (anchor) anchor.parentElement.insertBefore(card, anchor);
+    else document.querySelector('main').appendChild(card);
+
+    document.getElementById('cv-send').onclick = sendReply;
+    document.getElementById('cv-fetch').onclick = function(){ fetchMessages(true); };
+    document.getElementById('cv-compose').addEventListener('keydown',function(e){
+      if (e.key==='Enter' && (e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); }
+    });
+
+    // initial load + poll
+    fetchMessages(false);
+    _pollTimer = setInterval(function(){ fetchMessages(false); }, 15000);
+
+    renderSidebar();
+    renderThread();
+  }
+
+  // expose getData for sidebar merge
+  var _origRender = window.__mcDest && window.__mcDest.render;
+  if (window.__mcDest) {
+    window.__mcDest.getData = function(){ return (window.__mcDest._data||[]); };
+    var origSet = window.__mcDest.setData;
+    window.__mcDest.setData = function(d){
+      window.__mcDest._data = d;
+      if (origSet) origSet(d);
+      renderSidebar();
+    };
+  }
+
+  // intercept fetch to capture message data
+  var _origFetch2 = window.fetch;
+  window.fetch = function(u, opts){
+    var p = _origFetch2.apply(this, arguments);
+    var us = String(u);
+    if (us.indexOf('/api/messages') >= 0) {
+      p.then(function(r){ return r.clone().json(); })
+       .then(function(j){ var changed=ingest(j.messages,'in'); if(changed){renderSidebar();renderThread();} })
+       .catch(function(){});
+    }
+    if (us.indexOf('/api/send') >= 0 && opts && opts.method === 'POST') {
+      try {
+        var body = JSON.parse(opts.body||'{}');
+        if (body.text && body.targets) {
+          p.then(function(r){ return r.clone().json(); })
+           .then(function(j){
+             if (!j.ok) return;
+             var ts = new Date().toTimeString().slice(0,8);
+             (body.targets||[]).forEach(function(tid){
+               if (!threads[tid]) threads[tid]=[];
+               threads[tid].push({dir:'out',who:'you',text:body.text,at:ts});
+             });
+             renderThread();
+           }).catch(function(){});
+        }
+      } catch(e){}
+    }
+    return p;
+  };
+
+  setTimeout(addPanel, 900);
+  document.addEventListener('click', function(){ setTimeout(addPanel, 900); }, true);
+
+  // styles
+  var st = document.createElement('style');
+  st.textContent =
+    '#cv-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}' +
+    '#cv-body{display:grid;grid-template-columns:180px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;min-height:320px}' +
+    '@media(max-width:600px){#cv-body{grid-template-columns:1fr}#cv-sidebar{border-right:none;border-bottom:1px solid var(--line)}}' +
+    '#cv-sidebar{background:#0c0e12;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column}' +
+    '.cv-row{padding:7px 8px;border-radius:5px;cursor:pointer;margin-bottom:2px}' +
+    '.cv-row:hover{background:#1e222b}' +
+    '.cv-row.cv-active{background:#1a2236;border-left:2px solid var(--accent)}' +
+    '.cv-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '.cv-preview{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}' +
+    '#cv-main{display:flex;flex-direction:column}' +
+    '#cv-hdr{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);padding:8px 12px;border-bottom:1px solid var(--line)}' +
+    '#cv-thread{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-height:200px}' +
+    '.cv-msg{display:flex;flex-direction:column;max-width:80%}' +
+    '.cv-in{align-self:flex-start}' +
+    '.cv-out{align-self:flex-end;align-items:flex-end}' +
+    '.cv-who{font-size:10px;color:var(--mut);margin-bottom:2px}' +
+    '.cv-out .cv-who{color:var(--accent);opacity:.7}' +
+    '.cv-at{font-size:10px;color:var(--mut);opacity:.6;margin-left:6px}' +
+    '.cv-txt{background:#1e222b;padding:6px 10px;border-radius:12px;font-size:13px;line-height:1.4;word-break:break-word}' +
+    '.cv-out .cv-txt{background:#1a3a5c;color:#c8ddff}' +
+    '.cv-empty{font-size:12px;color:var(--mut);padding:20px;text-align:center}' +
+    '#cv-compose-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}' +
+    '#cv-compose{flex:1;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;resize:none}' +
+    '#cv-compose:focus{outline:none;border-color:var(--accent)}' +
+    '#cv-send{align-self:flex-end;padding:7px 14px}';
+  document.head.appendChild(st);
+})();
+</script>
 </body>
 </html>
