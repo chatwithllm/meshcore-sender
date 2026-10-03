@@ -52,6 +52,47 @@
   .hide{display:none !important}
   [hidden]{display:none !important}
   .note{color:var(--mut);font-size:12px;margin-top:10px}
+
+  /* ── app layout ── */
+  html,body{height:100%;margin:0}
+  body{display:flex;flex-direction:column}
+  main{flex:1;display:flex;flex-direction:column;max-width:860px;width:100%;
+       margin:0 auto;padding:14px 16px 0;box-sizing:border-box}
+  h1{font-size:16px;font-weight:700;margin:0 0 1px}
+  .sub{font-size:12px;color:var(--mut);margin:0 0 10px}
+
+  /* radio bar */
+  #radio-bar{display:flex;align-items:center;gap:8px;background:var(--card);
+             border:1px solid var(--line);border-radius:var(--radius);
+             padding:8px 12px;margin-bottom:10px;flex-wrap:wrap}
+  #radioText{font-size:13px;flex:1}
+  #radio-btns{display:flex;gap:6px;margin-left:auto}
+  #radio-btns button{padding:4px 10px;font-size:12px}
+
+  /* conversations panel fills remaining space */
+  #cv-anchor{flex:1;min-height:0;display:flex;flex-direction:column}
+  #cv-panel{flex:1;min-height:0;display:flex;flex-direction:column;
+            background:var(--card);border:1px solid var(--line);
+            border-radius:var(--radius);margin-bottom:10px;padding:0;overflow:hidden}
+  #cv-panel > .dgroup{padding:10px 14px 8px;border-bottom:1px solid var(--line);
+                      font-size:11px;letter-spacing:.09em;margin:0}
+  #cv-body{flex:1;min-height:0;display:grid;grid-template-columns:180px 1fr;overflow:hidden}
+  @media(max-width:600px){#cv-body{grid-template-columns:1fr}}
+  #cv-sidebar{overflow-y:auto}
+  #cv-main{min-height:0;display:flex;flex-direction:column}
+  #cv-thread{flex:1;min-height:0;overflow-y:auto}
+
+  /* drawers */
+  .drawer{border:1px solid var(--line);border-radius:var(--radius);
+          margin-bottom:8px;background:var(--card)}
+  .drawer summary{padding:10px 14px;cursor:pointer;font-size:12px;font-weight:700;
+                  letter-spacing:.08em;text-transform:uppercase;color:var(--mut);
+                  list-style:none;display:flex;align-items:center;gap:6px;user-select:none}
+  .drawer summary::before{content:'▶';font-size:9px;opacity:.5;transition:transform .15s}
+  .drawer[open] summary::before{transform:rotate(90deg)}
+  .drawer summary::-webkit-details-marker{display:none}
+  .drawer-body{padding:14px;border-top:1px solid var(--line)}
+  #drawer-messages-body .card,#drawer-range-body .card{background:transparent;border:none;padding:0}
 </style>
 <style>
   /* message box is resizable by the user, per request */
@@ -96,35 +137,48 @@
 
   <!-- 3. the sender -->
   <section id="app" class="hide">
-    <div class="card">
-      <h2>Radio</h2>
-      <div class="status">
-        <span id="radioDot" class="dot"></span>
-        <span id="radioText">checking&hellip;</span>
-        <button id="refresh" class="ghost" style="margin-left:auto;padding:5px 11px;font-size:12px">
-          Refresh
-        </button>
+    <!-- compact radio bar -->
+    <div id="radio-bar">
+      <span id="radioDot" class="dot"></span>
+      <span id="radioText">checking&hellip;</span>
+      <span id="radio-btns">
+        <button id="refresh" class="ghost">Refresh</button>
+      </span>
+    </div>
+
+    <!-- conversations live here (panel injected by JS below) -->
+    <div id="cv-anchor"></div>
+
+    <!-- collapsible drawers -->
+    <details id="drawer-compose" class="drawer">
+      <summary>New message</summary>
+      <div class="drawer-body">
+        <div style="margin-bottom:10px">
+          <label>Message</label>
+          <textarea id="text" placeholder="Type the message to send&hellip;"></textarea>
+          <div class="note" id="count"></div>
+        </div>
+        <label>Destination</label>
+        <div class="targets" id="targets"></div>
+        <div class="note" style="margin:6px 0 10px">Several contacts = one transmission each.
+          Public channel is a single broadcast.</div>
+        <div class="row">
+          <button id="sendGo">Send</button>
+          <span class="note" id="sendNote" style="margin:0"></span>
+        </div>
+        <div id="results" class="results"></div>
       </div>
-    </div>
+    </details>
 
-    <div class="card">
-      <h2>Message</h2>
-      <textarea id="text" placeholder="Type the message to send&hellip;"></textarea>
-      <div class="note" id="count"></div>
-    </div>
+    <details id="drawer-messages" class="drawer">
+      <summary>Raw inbox</summary>
+      <div class="drawer-body" id="drawer-messages-body"></div>
+    </details>
 
-    <div class="card">
-      <h2>Destination</h2>
-      <div class="targets" id="targets"></div>
-      <div class="note">Several contacts = one transmission each, so it costs airtime
-        per contact. The public channel is a single broadcast.</div>
-    </div>
-
-    <div class="row">
-      <button id="sendGo">Send</button>
-      <span class="note" id="sendNote" style="margin:0"></span>
-    </div>
-    <div id="results" class="results"></div>
+    <details id="drawer-range" class="drawer">
+      <summary>Range test</summary>
+      <div class="drawer-body" id="drawer-range-body"></div>
+    </details>
   </section>
 </main>
 
@@ -180,6 +234,16 @@ $('loginGo').onclick = async () => {
 function setRadio(ok, text) {
   $('radioDot').className = 'dot ' + (ok === null ? '' : ok ? 'ok' : 'bad');
   $('radioText').textContent = text;
+}
+
+// move advert/refresh buttons into radio-bar after they're created
+function _syncRadioBar() {
+  var bar = $('radio-btns');
+  if (!bar) return;
+  ['refresh','adv-flood','adv-zero'].forEach(function(id) {
+    var el = $(id);
+    if (el && el.parentElement !== bar) bar.appendChild(el);
+  });
 }
 
 async function checkHealth() {
@@ -705,6 +769,29 @@ document.addEventListener('keydown', function (e) {
       .catch(function(){});
   }
 
+  // move the conversation panel into #cv-anchor so it fills the flex slot
+  function _mountPanel(){
+    var anchor = document.getElementById('cv-anchor');
+    var panel  = document.getElementById('cv-panel');
+    if (!anchor || !panel) return;
+    if (panel.parentElement !== anchor) anchor.appendChild(panel);
+  }
+  var _mountObs = new MutationObserver(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); });
+  _mountObs.observe(document.body, {childList:true, subtree:true});
+  setTimeout(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); }, 200);
+
+  function _moveDrawerChildren(){
+    // inbox card → raw inbox drawer
+    var inbox   = document.getElementById('inbox');
+    var msgBody = document.getElementById('drawer-messages-body');
+    if (inbox && msgBody && inbox.parentElement !== msgBody) msgBody.appendChild(inbox);
+    // range card → range drawer
+    var rcard   = document.getElementById('range-card');
+    var rBody   = document.getElementById('drawer-range-body');
+    if (rcard && rBody && rcard.parentElement !== rBody) rBody.appendChild(rcard);
+    _syncRadioBar();
+  }
+
   window.__range = {
     start: rangeStart,
     stop: rangeStop,
@@ -935,11 +1022,9 @@ document.addEventListener('keydown', function (e) {
           '<div id="cv-err" style="color:var(--bad);font-size:12px;min-height:16px"></div>' +
         '</div>' +
       '</div>';
-    // insert before range test card or at end of main
-    var rt = document.getElementById('range-card');
-    var inbox = document.getElementById('inbox');
-    var anchor = rt || inbox;
-    if (anchor) anchor.parentElement.insertBefore(card, anchor);
+    // mount inside #cv-anchor so it fills the flex slot
+    var anchor = document.getElementById('cv-anchor');
+    if (anchor) anchor.appendChild(card);
     else document.querySelector('main').appendChild(card);
 
     document.getElementById('cv-send').onclick = sendReply;
