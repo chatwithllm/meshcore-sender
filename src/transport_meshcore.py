@@ -62,6 +62,7 @@ _loop_ready.wait()
 
 
 def _submit(coro, timeout: float = None):
+
     """Submit coro to the background loop; block until done or timeout."""
     import asyncio
     fut = asyncio.run_coroutine_threadsafe(coro, _loop)
@@ -74,6 +75,7 @@ _mc_lock = threading.Lock()   # serialises connect / disconnect
 _channels: list = []          # [{id, name, kind}] — cached on connect
 _inbox: list = []             # [{scope, sender, text, at, direction, raw}]
 _inbox_lock = threading.Lock()
+_DRAIN_INTERVAL = int(os.environ.get("MESHCORE_DRAIN_INTERVAL", "8"))  # seconds
 
 
 def _now() -> str:
@@ -82,7 +84,8 @@ def _now() -> str:
 
 def _add_inbox(scope: str, sender, text: str, direction: str = "in") -> None:
     ts = _now()
-    raw = "%s|%s|%s|%s|%s" % (direction, scope, sender or "", text, ts)
+    # raw excludes timestamp so drain + subscription don't create duplicates
+    raw = "%s|%s|%s|%s" % (direction, scope, sender or "", text)
     with _inbox_lock:
         if not any(m.get("raw") == raw for m in _inbox):
             _inbox.append({
@@ -104,7 +107,7 @@ async def _connect_async():
     global _mc, _channels
     from meshcore import MeshCore, EventType
 
-    mc = await MeshCore.create_ble(ADDR, timeout=15)
+    mc = await MeshCore.create_ble(ADDR, default_timeout=15)
 
     # Subscribe to live incoming DMs
     def _on_dm(event):
@@ -161,9 +164,18 @@ def _get_mc():
     """Return a live MeshCore instance, auto-connecting when needed."""
     global _mc
     with _mc_lock:
-        if _mc is not None and _mc.is_connected():
-            return _mc, None
         if _mc is not None:
+            try:
+                connected = _mc.is_connected
+            except Exception as _e:
+                # is_connected failed — log and assume still connected rather
+                # than tear down a potentially live BLE link unnecessarily.
+                log.warning("is_connected check raised %s (%s); reusing connection",
+                            type(_e).__name__, _e)
+                connected = True
+            if connected:
+                return _mc, None
+            # is_connected returned False — link dropped, reconnect below
             try:
                 _submit(_mc.disconnect(), timeout=5)
             except Exception:
@@ -265,16 +277,27 @@ def send(targets, text):
             who = t.split(":", 1)[1] if ":" in t else t
             contact = mc.get_contact_by_name(who)
             if contact is None:
-                results.append({"target": who, "ok": False,
+                results.append({"target": who, "ok": False, "acked": False,
                                  "out": "contact '%s' not found" % who})
                 continue
             try:
-                ev = _submit(mc.commands.send_msg(contact, text), timeout=TIMEOUT)
-                ok = ev.type != EventType.ERROR
-                out = "" if ok else str(ev.payload)[:200]
+                ack_ev = _submit(
+                    mc.commands.send_msg_with_retry(
+                        contact, text,
+                        timeout=min(TIMEOUT * 0.4, 15.0),
+                        min_timeout=2.0,
+                        max_attempts=2,
+                        max_flood_attempts=1,
+                    ),
+                    timeout=TIMEOUT + 5,
+                )
+                # None = sent, no ACK received; Event = ACK received
+                acked = ack_ev is not None and ack_ev.type != EventType.ERROR
+                ok = True
+                out = "ACK received" if acked else "sent (no ACK)"
             except Exception as e:
-                ok, out = False, "send_msg error: %s" % e
-            results.append({"target": who, "ok": ok, "out": out})
+                ok, acked, out = False, False, "send error: %s" % e
+            results.append({"target": who, "ok": ok, "acked": acked, "out": out})
     return results
 
 
@@ -324,6 +347,26 @@ async def _drain_queue_async(mc) -> None:
         ev = await mc.commands.get_msg()
         if ev.type in (EventType.NO_MORE_MSGS, EventType.ERROR):
             break
+        p = ev.payload or {}
+        if ev.type == EventType.CONTACT_MSG_RECV:
+            pubkey = p.get("pubkey_prefix", "")
+            text = (p.get("text") or "").strip()
+            try:
+                contact = mc.get_contact_by_key_prefix(pubkey) if pubkey else None
+                name = (contact.get("adv_name") if contact else None) or pubkey[:8] or "unknown"
+            except Exception:
+                name = pubkey[:8] or "unknown"
+            _add_inbox(scope=name, sender=name, text=text, direction="in")
+        elif ev.type == EventType.CHANNEL_MSG_RECV:
+            idx = p.get("channel_idx", 0)
+            text = (p.get("text") or "").strip()
+            scope = "public" if idx == 0 else "chan%d" % idx
+            sender = None
+            if ": " in text:
+                sender, text = text.split(": ", 1)
+            _add_inbox(scope=scope, sender=sender, text=text, direction="in")
+        else:
+            log.debug("drain: unexpected event type %s", ev.type)
         await asyncio.sleep(0.05)
 
 
@@ -344,3 +387,22 @@ def messages(limit: int = 60):
 
     with _inbox_lock:
         return list(_inbox[-limit:]), None
+
+
+# ── background drain thread ──────────────────────────────────────────────────
+# Periodically drains the device message queue so incoming replies appear
+# in the UI automatically without requiring a manual "Fetch new".
+
+def _bg_drain_loop() -> None:
+    while True:
+        time.sleep(_DRAIN_INTERVAL)
+        try:
+            mc, _ = _get_mc()
+            if mc is None:
+                continue
+            _submit(_drain_queue_async(mc), timeout=_DRAIN_INTERVAL + 10)
+        except Exception as e:
+            log.debug("bg drain: %s", e)
+
+
+threading.Thread(target=_bg_drain_loop, daemon=True, name="mc-drain").start()

@@ -259,6 +259,29 @@ class Handler(BaseHTTPRequestHandler):
                 _store = _json.load(open(_p))
             except Exception:
                 _store = []
+            # Merge live in-memory inbox (subscription events not yet persisted)
+            try:
+                from transport_meshcore import _inbox as _live, _inbox_lock as _ilock
+                with _ilock:
+                    _live_copy = list(_live)
+                # Dedup by (scope, text) — handles old CLI format vs new SDK format
+                _seen = set(
+                    ((x.get("scope") or ""), (x.get("text") or "").strip())
+                    for x in _store
+                )
+                _added = [_m for _m in _live_copy
+                          if ((_m.get("scope") or ""), (_m.get("text") or "").strip())
+                          not in _seen]
+                if _added:
+                    _store.extend(_added)
+                    _store = _store[-300:]
+                    try:
+                        _os.makedirs(_os.path.dirname(_p), exist_ok=True)
+                        _json.dump(_store, open(_p, "w"))
+                    except Exception:
+                        pass
+            except ImportError:
+                pass
             self._json(200, {"messages": _store, "error": None})
         elif path == "/api/advert":
             if not _auth_set():
@@ -357,10 +380,13 @@ class Handler(BaseHTTPRequestHandler):
                 _store = []
             from transport_meshcore import messages as _msgs
             _new, _e = _msgs()
-            _seen = set(x.get("raw") or x.get("text") for x in _store)
+            _seen = set(
+                ((_m.get("scope") or ""), (_m.get("text") or "").strip())
+                for _m in _store
+            )
             for _m in _new:
-                if (_m.get("raw") or _m.get("text")) not in _seen:
-                    _m["at"] = _now()
+                if ((_m.get("scope") or ""), (_m.get("text") or "").strip()) not in _seen:
+                    _m.setdefault("at", _now())
                     _store.append(_m)
             _store = _store[-300:]
             try:
@@ -463,14 +489,17 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     _store = []
                 ts = _now()
+                _result_map = {r["target"]: r for r in results}
                 for t in targets:
                     scope = ("public" if t == "chan:0"
                              else "chan%s" % t.split(":",1)[1] if t.startswith("chan:")
                              else t.split(":",1)[1] if ":" in t else t)
-                    raw = "out|%s|%s|%s" % (scope, text, ts)
+                    raw = "out|%s|%s" % (scope, text)
+                    _acked = _result_map.get(scope, {}).get("acked", False)
                     if not any(m.get("raw") == raw for m in _store):
                         _store.append({"scope": scope, "sender": None, "text": text,
-                                       "at": ts, "direction": "out", "raw": raw})
+                                       "at": ts, "direction": "out", "raw": raw,
+                                       "acked": _acked})
                 _store = _store[-300:]
                 try:
                     _os.makedirs(os.path.dirname(_p), exist_ok=True)

@@ -880,7 +880,8 @@ document.addEventListener('keydown', function (e) {
         dir: dir,
         who: m.sender || (dir==='out' ? 'you' : m.scope),
         text: m.text||'',
-        at: m.at || new Date().toTimeString().slice(0,8)
+        at: m.at || new Date().toTimeString().slice(0,8),
+        acked: m.acked
       });
       changed = true;
       // ensure sidebar has this thread even if not in contacts list
@@ -955,10 +956,17 @@ document.addEventListener('keydown', function (e) {
     if (!msgs.length){ box.innerHTML='<div class="cv-empty">No messages yet.</div>'; return; }
     box.innerHTML = msgs.map(function(m){
       var out = m.dir === 'out';
+      var ackBadge = '';
+      if (out) {
+        ackBadge = m.acked
+          ? '<span class="cv-ack cv-ack-ok" title="Delivered">✓</span>'
+          : '<span class="cv-ack cv-ack-wait" title="Sent, awaiting ACK">⌛</span>';
+      }
       return '<div class="cv-msg '+(out?'cv-out':'cv-in')+'">' +
         '<span class="cv-who">'+(out?'you':esc(m.who))+'</span>' +
         '<span class="cv-at">'+esc(m.at)+'</span>' +
         '<div class="cv-txt">'+esc(m.text)+'</div>' +
+        ackBadge +
         '</div>';
     }).join('');
     box.scrollTop = box.scrollHeight;
@@ -985,10 +993,11 @@ document.addEventListener('keydown', function (e) {
         if (err) { err.textContent = j.results[0].out||'send failed'; setTimeout(function(){err.textContent='';},4000); }
         return;
       }
-      // optimistically add to thread
+      // add to thread with ack status from server
       if (!threads[activeId]) threads[activeId]=[];
       var ts = new Date().toTimeString().slice(0,8);
-      threads[activeId].push({dir:'out',who:'you',text:text,at:ts});
+      var acked = j.results && j.results[0] ? !!j.results[0].acked : false;
+      threads[activeId].push({dir:'out',who:'you',text:text,at:ts,acked:acked});
       inp.value='';
       renderThread();
     }).catch(function(e){
@@ -1094,6 +1103,9 @@ document.addEventListener('keydown', function (e) {
     '.cv-at{font-size:10px;color:var(--mut);opacity:.6;margin-left:6px}' +
     '.cv-txt{background:#1e222b;padding:6px 10px;border-radius:12px;font-size:13px;line-height:1.4;word-break:break-word}' +
     '.cv-out .cv-txt{background:#1a3a5c;color:#c8ddff}' +
+    '.cv-ack{font-size:10px;margin-top:2px;align-self:flex-end}' +
+    '.cv-ack-ok{color:#58c07a}' +
+    '.cv-ack-wait{color:#888;opacity:.6}' +
     '.cv-empty{font-size:12px;color:var(--mut);padding:20px;text-align:center}' +
     '#cv-compose-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}' +
     '#cv-compose{flex:1;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;resize:none}' +
