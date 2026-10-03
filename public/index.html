@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshCore Sender</title>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#262b34; --ink:#e7eaf0; --mut:#8b93a3;
+    --accent:#4a9eff; --ok:#3fbf7f; --bad:#e8734a; --radius:8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  main{max-width:620px;margin:0 auto;padding:22px 18px 60px}
+  h1{font-size:17px;font-weight:650;letter-spacing:.01em;margin:0 0 2px}
+  .sub{color:var(--mut);font-size:12.5px;margin:0 0 20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+        padding:14px;margin-bottom:14px}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);
+           margin:0 0 10px;font-weight:700}
+  label{display:block;font-size:12px;color:var(--mut);margin:0 0 5px;letter-spacing:.04em;
+        text-transform:uppercase}
+  input[type=password],input[type=text],textarea{
+    width:100%;background:#0c0e12;color:var(--ink);border:1px solid var(--line);
+    border-radius:6px;padding:9px 10px;font:inherit;resize:vertical}
+  textarea{min-height:84px}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  button{background:var(--accent);color:#08121f;border:0;border-radius:6px;padding:10px 16px;
+         font:inherit;font-weight:650;cursor:pointer}
+  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:500}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .targets{display:flex;flex-direction:column;gap:2px;max-height:230px;overflow:auto;
+           border:1px solid var(--line);border-radius:6px;padding:6px}
+  .targets label{display:flex;gap:9px;align-items:center;text-transform:none;font-size:14px;
+                 color:var(--ink);letter-spacing:0;margin:0;padding:6px 6px;border-radius:5px;
+                 cursor:pointer}
+  .targets label:hover{background:#1e222b}
+  .targets input{width:15px;height:15px;accent-color:var(--accent)}
+  .node{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--mut)}
+  .status{display:flex;gap:8px;align-items:center;font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:0 0 auto}
+  .dot.ok{background:var(--ok)} .dot.bad{background:var(--bad)}
+  .results{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  .res{font-size:13px;border-left:3px solid var(--line);padding:6px 10px;background:#12151b;
+       border-radius:0 6px 6px 0}
+  .res.ok{border-left-color:var(--ok)} .res.bad{border-left-color:var(--bad)}
+  .res b{font-weight:600}
+  pre{white-space:pre-wrap;word-break:break-word;color:var(--mut);font-size:11.5px;margin:4px 0 0}
+  .err{color:var(--bad);font-size:13px;margin-top:8px}
+  .hide{display:none !important}
+  [hidden]{display:none !important}
+  .note{color:var(--mut);font-size:12px;margin-top:10px}
+</style>
+<style>
+  /* message box is resizable by the user, per request */
+  textarea { resize: vertical; min-height: 96px; max-height: 60vh; }
+  .dest-group { margin: 10px 0 4px; font-size: 11px; letter-spacing: .08em;
+                text-transform: uppercase; color: var(--muted, #888); }
+  .tmpl button { margin: 0 6px 6px 0; font-size: 12px; padding: 4px 9px; }
+  #activity { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #activity .row { padding: 3px 0; border-bottom: 1px solid #ffffff14; }
+  #activity .t { color: #8fb8d8; } #activity .ok { color: #58c07a; }
+  #activity .bad { color: #e88d7a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>MeshCore Sender</h1>
+  <p class="sub">Send to a contact, several contacts, or the public channel &middot; over BLE</p>
+
+  <!-- 1. first run -->
+  <section id="setup" class="card hide">
+    <h2>First run</h2>
+    <p class="note">Choose a passphrase for this app. It is separate from anything on the radio,
+      and it is stored only as a hash.</p>
+    <label for="sp">Passphrase (min 8 characters)</label>
+    <input id="sp" type="password" autocomplete="new-password">
+    <div class="row" style="margin-top:12px">
+      <button id="setupGo">Create</button>
+    </div>
+    <div id="setupErr" class="err"></div>
+  </section>
+
+  <!-- 2. login -->
+  <section id="login" class="card hide">
+    <h2>Sign in</h2>
+    <label for="pw">Passphrase</label>
+    <input id="pw" type="password" autocomplete="current-password">
+    <div class="row" style="margin-top:12px">
+      <button id="loginGo">Sign in</button>
+    </div>
+    <div id="loginErr" class="err"></div>
+  </section>
+
+  <!-- 3. the sender -->
+  <section id="app" class="hide">
+    <div class="card">
+      <h2>Radio</h2>
+      <div class="status">
+        <span id="radioDot" class="dot"></span>
+        <span id="radioText">checking&hellip;</span>
+        <button id="refresh" class="ghost" style="margin-left:auto;padding:5px 11px;font-size:12px">
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Message</h2>
+      <textarea id="text" placeholder="Type the message to send&hellip;"></textarea>
+      <div class="note" id="count"></div>
+    </div>
+
+    <div class="card">
+      <h2>Destination</h2>
+      <div class="targets" id="targets"></div>
+      <div class="note">Several contacts = one transmission each, so it costs airtime
+        per contact. The public channel is a single broadcast.</div>
+    </div>
+
+    <div class="row">
+      <button id="sendGo">Send</button>
+      <span class="note" id="sendNote" style="margin:0"></span>
+    </div>
+    <div id="results" class="results"></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let csrf = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    credentials: 'same-origin',
+    headers: Object.assign({'Content-Type': 'application/json'},
+                           opts.body && csrf ? {'X-CSRF-Token': csrf} : {}),
+    ...opts,
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {}; }
+  return {status: res.status, data};
+}
+
+function show(which) {
+  ['setup', 'login', 'app'].forEach((id) => $(id).classList.toggle('hide', id !== which));
+}
+
+async function boot() {
+  const {data} = await api('/api/session');
+  if (data.first_run) return show('setup');
+  if (!data.authed) return show('login');
+  csrf = data.csrf;
+  show('app');
+  loadNodes();
+  checkHealth();
+}
+
+$('setupGo').onclick = async () => {
+  $('setupErr').textContent = '';
+  const r = await api('/api/setup', {method: 'POST',
+    body: JSON.stringify({passphrase: $('sp').value})});
+  if (r.status !== 200) return $('setupErr').textContent = r.data.error || 'failed';
+  $('login').classList.remove('hide'); show('login');
+};
+
+$('loginGo').onclick = async () => {
+  $('loginErr').textContent = '';
+  const r = await api('/api/login', {method: 'POST',
+    body: JSON.stringify({passphrase: $('pw').value})});
+  if (r.status !== 200) return $('loginErr').textContent = r.data.error || 'failed';
+  csrf = r.data.csrf;
+  show('app');
+  loadNodes();
+  checkHealth();
+};
+
+function setRadio(ok, text) {
+  $('radioDot').className = 'dot ' + (ok === null ? '' : ok ? 'ok' : 'bad');
+  $('radioText').textContent = text;
+}
+
+async function checkHealth() {
+  const {status, data} = await api('/api/health');
+  if (status === 401) return show('login');
+  if (data.radio_ok) setRadio(true, `radio reachable \u00b7 ${data.nodes} contact(s)`);
+  else setRadio(false, 'radio not reachable' + (data.radio_error ? ' \u2014 ' + data.radio_error : ''));
+}
+
+async function loadNodes(force) {
+  const {status, data} = await api('/api/nodes' + (force ? '?force=1' : ''));
+  if (status === 401) return show('login');
+  const box = $('targets');
+  box.innerHTML = '';
+  const pub = document.createElement('label');
+  pub.innerHTML = '<input type="checkbox" value="public"> <span>Public channel</span>';
+  box.appendChild(pub);
+  (data.nodes || []).forEach((n) => {
+    const l = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = n.id;
+    const span = document.createElement('span');
+    span.textContent = n.name;
+    const code = document.createElement('span');
+    code.className = 'node'; code.textContent = n.id;
+    l.append(cb, span, code);
+    box.appendChild(l);
+  });
+  if (!(data.nodes || []).length) {
+    const p = document.createElement('div');
+    p.className = 'note';
+    p.textContent = data.error ? 'No contacts: ' + data.error
+                               : 'No contacts returned by the radio.';
+    box.appendChild(p);
+  }
+  if (!data.error) setRadio(true, `radio reachable \u00b7 ${(data.nodes || []).length} contact(s)`);
+  else setRadio(false, 'radio not reachable \u2014 ' + data.error);
+}
+
+$('refresh').onclick = () => loadNodes(true);
+
+$('text').oninput = () => {
+  const n = $('text').value.length;
+  $('count').textContent = n ? n + ' character(s)' + (n > 200 ? ' \u2014 long, consider shortening' : '') : '';
+};
+
+$('sendGo').onclick = async () => {
+  const targets = [...document.querySelectorAll('#targets input:checked')].map((c) => c.value);
+  const text = $('text').value.trim();
+  const btn = $('sendGo');
+  if (!text) return ($('sendNote').textContent = 'type a message first');
+  if (!targets.length) return ($('sendNote').textContent = 'pick a destination');
+  btn.disabled = true;
+  $('sendNote').textContent = 'sending\u2026';
+  $('results').innerHTML = '';
+  const r = await api('/api/send', {method: 'POST', body: JSON.stringify({text, targets})});
+  btn.disabled = false;
+  $('sendNote').textContent = '';
+  if (r.status === 401) return show('login');
+  const box = $('results');
+  (r.data.results || []).forEach((res) => {
+    const el = document.createElement('div');
+    el.className = 'res ' + (res.ok ? 'ok' : 'bad');
+    el.innerHTML = '<b>' + res.target + '</b> \u2014 ' + (res.ok ? 'sent' : 'failed');
+    if (!res.ok && res.out) {
+      const pre = document.createElement('pre'); pre.textContent = res.out; el.appendChild(pre);
+    }
+    box.appendChild(el);
+  });
+  if (r.data.error) {
+    const el = document.createElement('div');
+    el.className = 'res bad'; el.textContent = r.data.error;
+    box.appendChild(el);
+  }
+  if (r.data.hint) {
+    const el = document.createElement('div');
+    el.className = 'note'; el.textContent = r.data.hint;
+    box.appendChild(el);
+  }
+  if (r.data.ok) { $('text').value = ''; $('text').dispatchEvent(new Event('input')); }
+};
+
+boot();
+</script>
+<script>
+/* ENTER-SUBMIT: the passphrase fields sit outside a <form>, so Enter did
+   nothing and the button had to be clicked. Enter in any password field (or a
+   field tagged data-enter-submit) now activates that card's primary button.
+   Deliberately ignores TEXTAREA so the multi-line message box still takes
+   newlines. */
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  var t = e.target;
+  if (!t || t.tagName !== 'INPUT') return;
+  var wants = (t.type === 'password') || t.dataset.enterSubmit === '1' ||
+              (/pass|phrase|confirm|user|name/i.test(t.id || ''));
+  if (!wants) return;
+  var card = t.closest('.card') || document;
+  // Only consider VISIBLE buttons: the sign-in and first-run views share a
+  // card, so the first button in the DOM belongs to whichever view is hidden.
+  var btn = null, btns = card.querySelectorAll('button');
+  for (var i = 0; i < btns.length; i++) {
+    // offsetParent is null for position:fixed elements, which these cards
+    // are - so test real geometry instead of trusting it.
+    var r = btns[i].getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;        // hidden view
+    var b = btns[i];
+    if (b.classList.contains('primary') || b.type === 'submit') { btn = b; break; }
+    if (!btn) btn = b;
+  }
+  if (btn) { e.preventDefault(); btn.click(); }
+});
+</script>
+<script>
+
+/* DESTINATION OVERRIDE -- additive, revert by deleting the <script> tag.
+   Re-renders the destination list from the same /api/nodes data, using the
+   same input values (chan:N / dm:<name>), so the existing send code is
+   untouched. Adds: Contacts | Channels split, star-to-favorite (localStorage),
+   favorites sorted to the top. */
+(function () {
+  var KEY = 'mc.favorites.v1';
+  var DATA = [];
+
+  function favs(){ try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){ return []; } }
+  function isFav(id){ return favs().indexOf(id) >= 0; }
+  function toggle(id){
+    var f = favs(), i = f.indexOf(id);
+    if (i >= 0) f.splice(i,1); else f.push(id);
+    localStorage.setItem(KEY, JSON.stringify(f));
+    render();
+  }
+  function esc(s){ return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function row(it){
+    var isChan = it.id.indexOf('chan:') === 0;
+    var badge  = {node:'node', repeater:'repeater', room:'room'}[it.kind];
+    return '<label class="drow' + (isFav(it.id)?' fav':'') + '">' +
+      '<input type="checkbox" value="' + esc(it.id) + '">' +
+      '<span class="dname">' + esc(it.name) + '</span>' +
+      (badge ? '<span class="dbadge">' + badge + '</span>' : '') +
+      (isChan ? '<span class="did">' + esc(it.id) + '</span>' : '') +
+      '<button type="button" class="star" data-id="' + esc(it.id) + '" title="Favorite">' +
+        (isFav(it.id)?'\u2605':'\u2606') + '</button></label>';
+  }
+  function sortFavFirst(a,b){
+    return (isFav(b.id)?1:0)-(isFav(a.id)?1:0) || String(a.name).localeCompare(String(b.name));
+  }
+  function commonAncestor(nodes){
+    var a = nodes[0];
+    while (a && !nodes.every(function(n){ return a.contains(n); })) a = a.parentElement;
+    return a;
+  }
+  function host(){
+    // ONLY destination checkboxes: their values are dm:<name> / chan:<n>.
+    // Using every checkbox on the page once resolved to <body> (the inbox
+    // auto-toggle added one more), which re-rendered the list over the whole
+    // UI and wiped the cards. Hence the marker filter and the body guard.
+    var boxes = [...document.querySelectorAll('input[type=checkbox]')]
+      .filter(function(b){ return /^(dm:|chan:)/.test(b.value || ''); });
+    if (!boxes.length) return null;
+    var a = boxes[0];
+    while (a && !boxes.every(function(n){ return a.contains(n); })) a = a.parentElement;
+    if (!a || a === document.body || a === document.documentElement) return null;
+    return a;
+  }
+  function col(title, items, empty){
+    // Always render the column, even when empty: a group that silently
+    // disappears looks like a broken feature, not an empty radio.
+    var body = items.length
+      ? items.sort(sortFavFirst).map(row).join('')
+      : '<div class="dempty">' + esc(empty || 'None') + '</div>';
+    return '<div class="dcol"><div class="dgroup">' + esc(title) + '</div>' + body + '</div>';
+  }
+  function chanIdx(id){ var n = parseInt(String(id).split(':')[1], 10); return isNaN(n) ? 99 : n; }
+  var FILTER_KEY = 'mc.filter.v1';
+  var SECTION_LABEL = {node:'Nodes', repeater:'Repeaters', room:'Rooms', chan:'Channels'};
+  var EMPTY = {node:'No nodes in range. Press Refresh, or send an advert.',
+               repeater:'No repeaters in range.', room:'No room servers.',
+               chan:'No channels reported.'};
+  function filt(){ try { return localStorage.getItem(FILTER_KEY) || 'all'; } catch(e){ return 'all'; } }
+  // Section from the ID, not the kind: chan:0/chan:1 are channels no matter
+  // what tag the transport happens to attach.
+  function sectionOf(i){
+    var id = String((i && i.id) || '');
+    if (id.indexOf('chan:') === 0) return 'chan';
+    var k = (i && i.kind) || '';
+    return (k === 'repeater' || k === 'room') ? k : 'node';
+  }
+  function chanIdx(id){ var n = parseInt(String(id).split(':')[1], 10); return isNaN(n) ? 99 : n; }
+  function byChan(a,b){ return chanIdx(a.id) - chanIdx(b.id); }
+  function byName(a,b){ return String(a.name).localeCompare(String(b.name)); }
+
+  function render(){
+    var h = host(); if (!h || !DATA.length) return;
+    var f = filt();
+    var favItems = DATA.filter(function(i){ return isFav(i.id); }).sort(byName);
+    var html = '';
+    if (favItems.length && f === 'all') {
+      html += '<div class="dfav"><div class="dgroup">\u2605 Favorites</div>' +
+              '<div class="dgrid">' + favItems.map(row).join('') + '</div></div>';
+    }
+    var cols = '';
+    ['node','repeater','room','chan'].forEach(function(sec){
+      if (f !== 'all' && f !== sec) return;
+      var items = DATA.filter(function(i){ return sectionOf(i) === sec; })
+                      .sort(sec === 'chan' ? byChan : byName);
+      cols += col(SECTION_LABEL[sec], items, EMPTY[sec]);
+    });
+    if (!cols) cols = '<div class="dempty">Nothing in this filter.</div>';
+    html += '<div class="dgrid">' + cols + '</div>';
+    h.style.width = '100%';
+    h.innerHTML = html;
+    addChips();
+    setTimeout(function(){ inboxCheck(false); }, 200);
+  }
+
+  function addChips(){
+    var t = [...document.querySelectorAll('*')].filter(function(e){
+      return e.children.length === 0 && /^destination$/i.test((e.textContent||'').trim()); })[0];
+    if (!t) return;
+    var bar = document.getElementById('dest-chips');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'dest-chips'; bar.className = 'chips';
+      [['all','All'],['node','Nodes'],['repeater','Repeaters'],['room','Rooms'],['chan','Channels']]
+        .forEach(function(p){
+          var b = document.createElement('button');
+          b.type = 'button'; b.textContent = p[1]; b.dataset.f = p[0];
+        b.className = 'chip';
+          b.onclick = function(){ localStorage.setItem(FILTER_KEY, p[0]); render(); };
+          bar.appendChild(b);
+        });
+      t.parentElement.insertBefore(bar, t.nextSibling);
+    }
+    [...bar.querySelectorAll('.chip')].forEach(function(c){
+      c.classList.toggle('on', c.dataset.f === filt()); });
+  }
+
+  // capture the data the page already fetches
+  var orig = window.fetch;
+  window.fetch = function(u){
+    var p = orig.apply(this, arguments);
+    if (String(u).indexOf('/api/nodes') >= 0) {
+      p.then(function(r){ return r.clone().json(); })
+       .then(function(j){ DATA = j.nodes || []; setTimeout(render, 0); })
+       .catch(function(){});
+    }
+    return p;
+  };
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('button.star');
+    if (b) { e.preventDefault(); e.stopPropagation(); toggle(b.dataset.id); }
+  }, true);
+
+  // ADVERT-BUTTONS: the contact table is a cache of adverts heard, so a radio
+  // that has forgotten its neighbours needs an advert, not a Refresh.
+  function addAdvertButtons(){
+    var refresh = [...document.querySelectorAll('button')]
+      .find(b => /refresh/i.test(b.textContent || ''));
+    if (!refresh || document.getElementById('adv-flood')) return;
+    [['adv-flood','Flood advert','flood'], ['adv-zero','Advert (0-hop)','zero']]
+      .forEach(function(p){
+        var b = document.createElement('button');
+        b.id = p[0]; b.textContent = p[1]; b.className = 'ghost';
+        b.style.marginLeft = '6px';
+        b.onclick = function(){
+          b.disabled = true; b.textContent = 'sending\u2026';
+          fetch('/api/session', {credentials:'same-origin'}).then(r => r.json()).then(function(sess){
+            return fetch('/api/advert', {method:'POST', credentials:'same-origin',
+              headers:{'content-type':'application/json',
+                       'x-csrf': sess.csrf||'', 'x-csrf-token': sess.csrf||''},
+              body: JSON.stringify({mode: p[2], _csrf: sess.csrf||''})});
+          }).then(r => r.json()).then(function(j){
+            b.textContent = (j.ok ? '\u2713 ' : '\u2717 ') + p[1];
+            b.title = j.detail || '';
+            setTimeout(function(){ b.textContent = p[1]; b.disabled = false;
+              var rf = [...document.querySelectorAll('button')]
+                .find(x => /refresh/i.test(x.textContent||'')); if (rf) rf.click(); }, 3000);
+          }).catch(function(){ b.textContent = '\u2717 ' + p[1]; b.disabled = false; });
+        };
+        refresh.parentElement.insertBefore(b, refresh.nextSibling);
+      });
+  }
+  setTimeout(addAdvertButtons, 400);
+  document.addEventListener('click', function(){ setTimeout(addAdvertButtons, 400); }, true);
+
+  // TEMPLATES: one-tap message presets. {time} is stamped at click time.
+  function addTemplates(){
+    var ta = document.querySelector('textarea');
+    if (!ta || document.getElementById('tmpl-row')) return;
+    var row = document.createElement('div');
+    row.id = 'tmpl-row'; row.className = 'chips';
+    [['RT {time}','RT (time)'], ['Radio check','Radio check'],
+     ['Ping - please ack','Ping'], ['Range test - reply if you copy','Range test'],
+     [null,'Clear']].forEach(function(t){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = t[1];
+      b.onclick = function(){
+        ta.value = t[0]
+          ? t[0].replace('{time}', new Date().toTimeString().slice(0,8)) : '';
+        ta.focus();
+        ta.dispatchEvent(new Event('input', {bubbles:true}));
+      };
+      row.appendChild(b);
+    });
+    ta.parentElement.insertBefore(row, ta);
+  }
+  setTimeout(addTemplates, 500);
+  document.addEventListener('click', function(){ setTimeout(addTemplates, 500); }, true);
+
+  // INBOX: sync_msgs CONSUMES the device queue, so messages are accumulated
+  // client-side and deduped by content. Auto-check is 30s because every check
+  // costs a full BLE session (~20s). Verified parse format: '<scope> (<flag>): <text>'.
+  var INBOX_SEEN = {};
+  var INBOX_SCOPE = {};
+  function inboxRender(){
+    var body = document.getElementById('inbox-body');
+    if (!body) return;
+    var keys = Object.keys(INBOX_SEEN);
+    if (!keys.length) { body.className = 'dempty'; body.textContent = 'No messages yet.'; return; }
+    body.className = '';
+    var by = {};
+    keys.reverse().forEach(function(k){                 // newest first
+      var sc = INBOX_SCOPE[k] || 'other';
+      (by[sc] = by[sc] || []).push(INBOX_SEEN[k]);
+    });
+    body.innerHTML = Object.keys(by).sort().map(function(sc){
+      return '<div class="convo">' + esc(sc) + '</div>' +
+             '<div class="cbody">' + by[sc].map(function(r){ return '<div class="irow">' + r + '</div>'; }).join('') + '</div>';
+    }).join('');
+  }
+  function inboxCheck(fetchRadio){
+    // Gate on the session: the Messages card also exists on the sign-in view,
+    // where an unconditional fetch just 401s and leaves a stale empty state.
+    window.__inboxFetch = !!fetchRadio;
+    return fetch('/api/session', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(sess){
+        if (!sess || !sess.authed) return null;          // signed out: stay quiet
+        var url = window.__inboxFetch ? '/api/messages/fetch' : '/api/messages';
+        return fetch(url, {credentials:'same-origin',
+                           headers:{'X-CSRF-Token': sess.csrf || ''}})
+          .then(function(r){ return r.json(); });
+      })
+      .then(function(j){
+        if (!j) { return; }
+        (j.messages || []).forEach(function(m){
+          var key = m.raw || (m.scope + '|' + m.text);
+          if (INBOX_SEEN[key]) return;
+          var who = m.sender ? m.sender : m.scope;
+          var _sc = String(m.scope || 'public');
+          INBOX_SCOPE[key] = (_sc === 'public') ? 'Public channel' : _sc;
+          INBOX_SEEN[key] = '<span class="t">' + (m.at || new Date().toTimeString().slice(0,8)) +
+            '</span> <span class="who">' + esc(who) + '</span> ' + esc(m.text);
+        });
+        if (j.error && !Object.keys(INBOX_SEEN).length) {
+          var b = document.getElementById('inbox-body');
+          if (b) { b.className = 'dempty'; b.textContent = j.error; }
+        }
+        inboxRender();
+      }).catch(function(){});
+  }
+  function addInbox(){
+    if (document.getElementById('inbox')) return;
+    var send = [...document.querySelectorAll('button')].find(function(b){
+      return /^send$/i.test((b.textContent||'').trim()); });
+    if (!send) return;
+    var card = document.createElement('div');
+    card.className = 'card'; card.id = 'inbox';
+    card.innerHTML = '<div class="dgroup">Messages</div>' +
+      '<div style="margin:6px 0 8px"><button type="button" class="chip" id="inbox-check">Check now</button>' +
+      ' <label class="chip" style="cursor:pointer">' +
+      '<input type="checkbox" id="inbox-auto" style="margin-right:5px">auto 30s</label></div>' +
+      '<div id="inbox-body" class="dempty">No messages yet.</div>';
+    var host = send.closest('.card');
+    (host ? host.parentElement : document.body).appendChild(card);
+    document.getElementById('inbox-check').onclick = function(){ inboxCheck(true); };
+    setTimeout(function(){ inboxCheck(false); }, 400);
+    setInterval(function(){
+      var a = document.getElementById('inbox-auto');
+      if (a && a.checked) inboxCheck(true);
+    }, 30000);
+  }
+  setTimeout(addInbox, 600);
+  document.addEventListener('click', function(){ setTimeout(addInbox, 600); }, true);
+
+  // SENT-TO-THREADS: what you send belongs in the conversation too.
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('button');
+    if (!b || !/^send$/i.test((b.textContent || '').trim())) return;
+    var ta = document.querySelector('textarea');
+    var txt = ta && ta.value.trim();
+    if (!txt) return;
+    [...document.querySelectorAll('input[type=checkbox]:checked')]
+      .map(function(c){ return c.value || ''; })
+      .filter(function(v){ return /^(dm:|chan:)/.test(v); })
+      .forEach(function(t){
+        var named = (window.__mcDest && window.__mcDest.nameFor) ? window.__mcDest.nameFor(t) : null;
+        var who = named || (t.indexOf('chan:') === 0 ? ('Channel ' + t.split(':')[1]) : t.slice(3));
+        var k = 'sent|' + t + '|' + txt + '|' + Date.now();
+        INBOX_SCOPE[k] = who;
+        INBOX_SEEN[k] = '<span class="t">' + new Date().toTimeString().slice(0,8) +
+          '</span> <span class="who">you</span> ' + esc(txt);
+      });
+    setTimeout(inboxRender, 60);
+  }, true);
+
+  // debug hook, used by the automated check
+  window.__mcDest = { render: render, setData: function(d){ DATA = d; render(); },
+                     nameFor: function(id){ var f = DATA.filter(function(i){ return i.id === id; })[0];
+                       if (!f) return null;
+                       if (String(id).indexOf("chan:") === 0 && /public/i.test(f.name)) return "Public channel";
+                       return f.name; } };
+
+  var st = document.createElement('style');
+  st.textContent =
+    '.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}' +
+    '@media (max-width:820px){.dgrid{grid-template-columns:1fr}}' +
+    '.dfav{border:1px solid #ffffff1f;border-radius:8px;padding:7px 10px;margin:0 0 12px}' +
+    '.dfav .dgroup{opacity:.85}' +
+    '.dgroup{font-size:11px;letter-spacing:.09em;text-transform:uppercase;opacity:.6;margin:2px 0 6px}' +
+    '.drow{display:flex;align-items:center;gap:7px;padding:3px 0;font-size:13px}' +
+    '.drow .did{font-size:11px;opacity:.45;margin-left:auto}' +
+    '.drow .dname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.drow.fav .dname{font-weight:600}' +
+    '.star{border:0;background:none;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;opacity:.75}' +
+    '.convo{margin:10px 0 3px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.85;color:#8fb8d8}' +
+    '.cbody{padding-left:8px;border-left:2px solid #ffffff1a}' +
+    '.irow{display:block;padding:4px 0;font-size:13px;border-bottom:1px solid #ffffff12}' +
+    '.irow .t{color:#8fb8d8;font-size:11px}' +
+    '.irow .who{font-weight:600;margin-right:4px}' +
+    '.chip.on{background:#3b82f6;border-color:#3b82f6;color:#fff;opacity:1}' +
+    '.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}' +
+    '.chip{border:1px solid #ffffff26;background:none;color:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer;opacity:.75}' +
+    '.dbadge{font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.4;border:1px solid #ffffff2b;border-radius:4px;padding:0 4px}' +
+    '.dgrid{width:100%;grid-template-columns:repeat(2,minmax(250px,1fr))}' +
+    '.dcol{min-width:0}' +
+    '.dname{flex:1 1 auto;min-width:5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.dbadge,.star,.did{flex:0 0 auto}' +
+    '.dempty{font-size:12px;opacity:.5;line-height:1.4;padding:2px 0 6px}';
+  document.head.appendChild(st);
+})();
+
+</script>
+</body>
+</html>
