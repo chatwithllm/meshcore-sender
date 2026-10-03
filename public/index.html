@@ -532,6 +532,34 @@ document.addEventListener('keydown', function (e) {
   setTimeout(addAdvertButtons, 400);
   document.addEventListener('click', function(){ setTimeout(addAdvertButtons, 400); }, true);
 
+  function addRadioButtons(){
+    var bar = document.getElementById('radio-bar');
+    if (!bar || document.getElementById('btn-reconnect')) return;
+    // Reconnect radio
+    var br = document.createElement('button');
+    br.id = 'btn-reconnect'; br.textContent = '↺ Reconnect'; br.className = 'ghost';
+    br.title = 'Drop and re-establish BLE connection';
+    br.onclick = function(){
+      br.disabled = true; br.textContent = '↺ connecting…';
+      getCSRF().then(function(csrf){
+        return fetch('/api/reconnect', {method:'POST', credentials:'same-origin',
+          headers:{'content-type':'application/json','x-csrf-token': csrf},
+          body: JSON.stringify({})});
+      }).then(r => r.json()).then(function(j){
+        br.textContent = (j.ok ? '✓ ' : '✗ ') + 'Reconnect';
+        setTimeout(function(){ br.textContent = '↺ Reconnect'; br.disabled = false; }, 3000);
+      }).catch(function(){ br.textContent = '✗ Reconnect'; br.disabled = false; });
+    };
+    // Reload page
+    var brl = document.createElement('button');
+    brl.id = 'btn-reload'; brl.textContent = '↺ Reload'; brl.className = 'ghost';
+    brl.title = 'Hard-refresh the page';
+    brl.onclick = function(){ location.reload(); };
+    bar.appendChild(br);
+    bar.appendChild(brl);
+  }
+  setTimeout(addRadioButtons, 600);
+
   // TEMPLATES: one-tap message presets. {time} is stamped at click time.
   function addTemplates(){
     var ta = document.querySelector('textarea');

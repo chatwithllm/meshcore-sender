@@ -510,6 +510,21 @@ class Handler(BaseHTTPRequestHandler):
                        {"ok": ok, "results": results,
                         "hint": None if ok else "check the radio is powered and not "
                                                "connected to the phone app"})
+        elif path == "/api/reconnect":
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            try:
+                import transport_meshcore as _t
+                ok, detail = _t.reconnect()
+            except Exception as e:
+                self._json(500, {"ok": False, "detail": str(e)})
+                return
+            self._json(200, {"ok": ok, "detail": detail})
         else:
             self._json(404, {"error": "no such route"})
 

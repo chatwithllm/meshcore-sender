@@ -193,6 +193,19 @@ def _get_mc():
 
 # ── public API ──────────────────────────────────────────────────────────────
 
+def reconnect():
+    """Force-disconnect BLE so the next call reconnects fresh."""
+    global _mc
+    with _mc_lock:
+        if _mc is not None:
+            try:
+                _submit(_mc.disconnect(), timeout=5)
+            except Exception:
+                pass
+            _mc = None
+    return True, "disconnected — will reconnect on next request"
+
+
 def strip_ansi(text):
     import re
     return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text or "")
