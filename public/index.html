@@ -535,6 +535,18 @@ document.addEventListener('keydown', function (e) {
   var MAP_DRAG_BOUND = false;
   var MAP_POPUP_OPEN = true;
 
+  function selectRepeaterOnMap(id, focus){
+    MAP_SELECTED_ID = id || MAP_SELECTED_ID;
+    MAP_POPUP_OPEN = true;
+    if (focus) {
+      MAP_FIXED_ZOOM = 13;
+      MAP_ZOOM_BUMP = 0;
+      MAP_PAN_X = 0;
+      MAP_PAN_Y = 0;
+    }
+    renderRepeaterMap();
+  }
+
   function renderRepeaterMap(){
     var body = document.getElementById('drawer-repeater-map-body');
     if (!body) return;
@@ -641,20 +653,14 @@ document.addEventListener('keydown', function (e) {
       '</div>';
     body.querySelectorAll('.map-row').forEach(function(row){
       row.onclick = function(){
-        MAP_SELECTED_ID = row.dataset.id || MAP_SELECTED_ID;
-        MAP_POPUP_OPEN = true;
-        MAP_FIXED_ZOOM = 13;
-        MAP_ZOOM_BUMP = 0;
-        MAP_PAN_X = 0;
-        MAP_PAN_Y = 0;
-        renderRepeaterMap();
+        selectRepeaterOnMap(row.dataset.id, true);
       };
     });
     body.querySelectorAll('.map-marker').forEach(function(marker){
-      marker.onclick = function(){
-        MAP_SELECTED_ID = marker.dataset.id || MAP_SELECTED_ID;
-        MAP_POPUP_OPEN = true;
-        renderRepeaterMap();
+      marker.onclick = function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        selectRepeaterOnMap(marker.dataset.id, false);
       };
     });
     var close = body.querySelector('.map-popup-close');
@@ -673,8 +679,16 @@ document.addEventListener('keydown', function (e) {
         MAP_ZOOM_BUMP = 0;
         renderRepeaterMap();
       };
+      stage.onclick = function(e){
+        var marker = e.target.closest && e.target.closest('.map-marker');
+        if (!marker) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectRepeaterOnMap(marker.dataset.id, false);
+      };
       stage.onpointerdown = function(e){
         if (e.target.closest && e.target.closest('.map-controls')) return;
+        if (e.target.closest && e.target.closest('.map-marker')) return;
         MAP_DRAG = {x:e.clientX, y:e.clientY, panX:MAP_PAN_X, panY:MAP_PAN_Y};
         stage.setPointerCapture && stage.setPointerCapture(e.pointerId);
         stage.classList.add('dragging');
@@ -1416,11 +1430,12 @@ document.addEventListener('keydown', function (e) {
     '.map-controls button:hover{background:#1f2937}' +
     '.map-controls span{min-width:22px;text-align:center;color:#d7dde8;font-size:11px}' +
     '.map-attrib{position:absolute;right:6px;bottom:5px;background:#0009;color:#fff;font-size:10px;padding:2px 5px;border-radius:4px;z-index:3}' +
-    '.map-popup{position:absolute;z-index:5;width:220px;background:#111827;color:var(--ink);border:1px solid #4da3ff;border-radius:8px;padding:10px 12px;box-shadow:0 8px 24px #0009;cursor:auto}' +
+    '.map-popup{position:absolute;z-index:5;width:220px;background:#111827;color:var(--ink);border:1px solid #4da3ff;border-radius:8px;padding:10px 12px;box-shadow:0 8px 24px #0009;cursor:auto;pointer-events:none}' +
     '.map-popup b{display:block;font-size:14px;margin-right:22px;margin-bottom:4px}' +
     '.map-popup span{display:block;color:var(--mut);font-size:12px;margin-bottom:6px}' +
-    '.map-popup a{color:#79b7ff;text-decoration:none;border-bottom:1px solid #79b7ff66;font-size:12px}' +
+    '.map-popup a{color:#79b7ff;text-decoration:none;border-bottom:1px solid #79b7ff66;font-size:12px;pointer-events:auto}' +
     '.map-popup-close{position:absolute;right:6px;top:6px;width:22px;height:22px;border:0;border-radius:5px;background:transparent;color:var(--mut);font-size:18px;line-height:1;cursor:pointer;padding:0}' +
+    '.map-popup-close{pointer-events:auto}' +
     '.map-popup-close:hover{background:#ffffff12;color:var(--ink)}' +
     '.map-selected{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--mut)}' +
     '.map-selected b{color:var(--ink);font-size:13px}' +
