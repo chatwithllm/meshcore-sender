@@ -997,7 +997,13 @@ document.addEventListener('keydown', function (e) {
       if (!threads[activeId]) threads[activeId]=[];
       var ts = new Date().toTimeString().slice(0,8);
       var acked = j.results && j.results[0] ? !!j.results[0].acked : false;
-      threads[activeId].push({dir:'out',who:'you',text:text,at:ts,acked:acked});
+      // Pre-register the raw key so ingest() skips the echoed message from next poll
+      var scope = activeId.startsWith('dm:') ? activeId.slice(3)
+                : activeId.startsWith('chan:') ? (activeId === 'chan:0' ? 'public' : activeId.replace(':',''))
+                : activeId;
+      var raw = 'out|' + scope + '|' + text;
+      _seen.add(raw);
+      threads[activeId].push({dir:'out',who:'you',text:text,at:ts,acked:acked,raw:raw});
       inp.value='';
       renderThread();
     }).catch(function(e){
