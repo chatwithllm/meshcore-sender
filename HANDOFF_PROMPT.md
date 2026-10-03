@@ -1,4 +1,4 @@
-TASK: finish and harden a local MeshCore messaging app on macOS
+TASK: continue hardening a local MeshCore messaging app on macOS
 
 You are taking over a working project mid-stream. Read this whole brief, then the
 handoff doc, then the code — in that order.
@@ -18,7 +18,7 @@ WHERE EVERYTHING IS
 - App: ~/dev/active/meshcore-sender/
   Run: cd ~/dev/active/meshcore-sender && python3 src/server.py   ->  http://127.0.0.1:8788
   Files: src/server.py (stdlib HTTP server, no pip deps), src/transport_meshcore.py
-  (CLI wrapper, parsers, role classification, auto-recovery, inbox),
+  (SDK transport, roles, route metadata, repeater coordinates, inbox),
   public/index.html (shell + ALL client JS inlined), data/inbox.json (message store),
   data/auth.json (passphrase hash, mode 0600).
 - Radio CLI: meshcore-cli at ~/.local/bin/meshcore-cli.
@@ -31,26 +31,28 @@ WHERE EVERYTHING IS
 
 WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
 - BLE connect by UUID; reads channels (chan:0 public, chan:1 private) and 50+ contacts.
-- Destinations classified from the radio's own TYPE column (CLI/REP/ROOM) into
+- Destinations classified from the SDK contact type/adverts into
   node / repeater / room, deduped, shown in four sections with filter chips and a
-  pinned Favourites section (star per row).
-- Sending to one contact, many contacts, or a channel, with wait_ack.
+  pinned Favourites section (star per row), plus search by contact/channel name.
+- Sending to one contact, many contacts, or a channel, with send status, ACK/fail
+  display, hop counts and route detail panel where route path is available.
 - Receiving: sync_msgs drains the radio's queue, parsed into a persistent store and
   shown as per-conversation threads in the UI (newest first, your own sends included).
-- Flood-advert button; also fires automatically (once, with a 90s cooldown) when the
-  radio reports an empty contact table.
-- Message templates, Enter-to-submit login, loopback-only binding, session cookie + CSRF.
+- Chat windows are bounded-height with internal scrolling; missed/unread counts show in
+  the conversation sidebar.
+- Repeater map: repeaters with advertised GPS are shown on an OpenStreetMap-backed map
+  with pan, wheel zoom, marker popup, selected-row sync and "Open full map".
+- Range test: one or more targets, editable while running, per-target sent/acked/missed
+  stats, next-ping countdown bar, live collapsed summary, and rolling log.
+- Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
+  session cookie + CSRF.
 
 NOT BUILT — NEXT TASKS IN ORDER
-1. Range test: interval (default 15s), message prefix (default "RT <time>"), Start/Stop,
-   per-target ack counters, rolling log. Routes /api/range/start|stop|status. Each tick:
-   msg <contact> "<prefix> <time>" wait_ack. The ACK is the delivery datum — that is the
-   entire point, and it is what a shell loop cannot prove.
-2. Add contact: one card accepting EITHER a contact URI (QR scanned on the phone) OR a
+1. Add contact: one card accepting EITHER a contact URI (QR scanned on the phone) OR a
    public key, plus a name; and a per-contact "show URI" action. Maps to import_contact /
    add_contact / export_contact. No QR library needed — the phone scans, the app imports.
-3. Deploy units: Dockerfile + launchd plist written to deploy/ and STAGED ONLY.
-4. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
+2. Deploy units: Dockerfile + launchd plist written to deploy/ and STAGED ONLY.
+3. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 
 HARD CONSTRAINTS
@@ -82,6 +84,5 @@ METHOD THAT WORKS HERE (learned the hard way; see doc §2 and §11)
   never claim a UI change is verified.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
-Range test running against a real contact with per-target ack counts, verified by actually
-running it; and any UI change either confirmed in a rendered signed-in view or explicitly
-reported as unverified.
+Add-contact workflow implemented and verified against real device output; any UI change
+either confirmed in a rendered signed-in view or explicitly reported as unverified.

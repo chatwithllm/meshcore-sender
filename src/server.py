@@ -19,7 +19,7 @@ import threading
 import time
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
@@ -39,45 +39,88 @@ _load_ok = False        # see _load_config: refuse to save before load
 _range = {
     "running": False,
     "target": None,
+    "targets": [],
     "prefix": "ping",
     "interval": 30,
     "sent": 0,
     "acked": 0,
+    "per_target": {},
     "log": [],          # list of {"seq":N,"ts":"HH:MM:SS","acked":bool,"rtt_ms":N,"detail":str}
     "thread": None,
+    "next_due_at": None,
 }
 _range_lock = threading.Lock()
 _RANGE_LOG_MAX = 200
 
 
-def _range_loop(target, prefix, interval):
-    """Background thread: send one DM per tick, record ACK."""
+def _range_loop(_targets, prefix, interval):
+    """Background thread: send one range-test message per tick."""
     import transport_meshcore as mc
     seq = 0
+    next_at = time.monotonic()
+    with _range_lock:
+        _range["next_due_at"] = time.time()
     while True:
-        with _range_lock:
-            if not _range["running"]:
+        while True:
+            delay = next_at - time.monotonic()
+            if delay <= 0:
                 break
-        seq += 1
-        ts = time.strftime("%H:%M:%S")
-        text = "%s %d [%s]" % (prefix, seq, ts)
-        ok, rtt, detail = mc.send_one_ack(target, text, timeout=45)
-        entry = {"seq": seq, "ts": ts, "acked": ok, "rtt_ms": rtt, "detail": detail}
-        with _range_lock:
-            _range["sent"] += 1
-            if ok:
-                _range["acked"] += 1
-            _range["log"].append(entry)
-            if len(_range["log"]) > _RANGE_LOG_MAX:
-                _range["log"] = _range["log"][-_RANGE_LOG_MAX:]
-            if not _range["running"]:
-                break
-        # sleep interval in 1s increments so stop is responsive
-        for _ in range(interval):
-            time.sleep(1)
+            time.sleep(min(1, delay))
             with _range_lock:
                 if not _range["running"]:
                     return
+        with _range_lock:
+            if not _range["running"]:
+                break
+            targets = list(_range.get("targets") or [])
+        if not targets:
+            with _range_lock:
+                _range["running"] = False
+                _range["next_due_at"] = None
+            return
+        seq += 1
+        for target in targets:
+            with _range_lock:
+                if not _range["running"]:
+                    return
+            ts = time.strftime("%H:%M:%S")
+            text = "%s %d [%s]" % (prefix, seq, ts)
+            try:
+                if target.startswith("chan:"):
+                    results = mc.send([target], text)
+                    ok = all(r.get("ok") for r in results)
+                    acked = False
+                    rtt = 0
+                    detail = "channel broadcast; no delivery ACK" if ok else (
+                        (results[0].get("out") if results else None) or "send failed")
+                else:
+                    contact_name = target.split(":", 1)[1] if target.startswith("dm:") else target
+                    ack_timeout = max(3, min(TIMEOUT, 20, interval - 2))
+                    acked, rtt, detail = mc.send_one_ack(contact_name, text, timeout=ack_timeout)
+                    ok = bool(acked)
+            except Exception as exc:  # noqa: BLE001 - keep scheduled test alive
+                ok = False
+                acked = False
+                rtt = 0
+                detail = str(exc) or "send failed"
+            entry = {"seq": seq, "target": target, "ts": ts, "acked": acked,
+                     "rtt_ms": rtt, "detail": detail}
+            with _range_lock:
+                _range["sent"] += 1
+                stat = _range["per_target"].setdefault(target, {"sent": 0, "acked": 0})
+                stat["sent"] += 1
+                if ok:
+                    _range["acked"] += 1
+                    stat["acked"] += 1
+                _range["log"].append(entry)
+                if len(_range["log"]) > _RANGE_LOG_MAX:
+                    _range["log"] = _range["log"][-_RANGE_LOG_MAX:]
+                if not _range["running"]:
+                    break
+        next_at += interval
+        with _range_lock:
+            if _range["running"]:
+                _range["next_due_at"] = time.time() + max(0, next_at - time.monotonic())
 
 
 # ---------------------------------------------------------------- config store
@@ -253,8 +296,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(401, {"error": "unauthorized"})
                 return
             import json as _json, os as _os
-            _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                               "data", "inbox.json")
+            _p = _os.path.join(DATA, "inbox.json")
             try:
                 _store = _json.load(open(_p))
             except Exception:
@@ -309,7 +351,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with _range_lock:
                 snap = {k: _range[k] for k in
-                        ("running", "target", "prefix", "interval", "sent", "acked", "log")}
+                        ("running", "target", "prefix", "interval", "sent", "acked",
+                         "log", "next_due_at", "targets", "per_target")}
+                snap["server_now"] = time.time()
             self._json(200, snap)
         elif path == "/api/nodes":
             if not _auth_set():
@@ -320,6 +364,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
             info = radio_nodes(force=self._qs_force())
             self._json(200, {"nodes": info["nodes"], "error": info["error"]})
+        elif path == "/api/route":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured", "setup": "/setup"})
+                return
+            if not self._session():
+                self._json(401, {"error": "unauthorized"})
+                return
+            qs = parse_qs(urlparse(self.path).query or "")
+            target = (qs.get("target") or [""])[0]
+            import re as _re
+            if not (_re.fullmatch(r"chan:\d+", target) or
+                    (_re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target)
+                     and not target[3:].startswith("-"))):
+                self._json(400, {"ok": False, "error": "bad destination"})
+                return
+            import transport_meshcore as mc
+            self._json(200, mc.route(target))
         else:
             self._json(404, {"error": "no such route"})      # never the SPA html
 
@@ -372,8 +433,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(403, {"error": "bad csrf token"})
                 return
             import json as _json, os as _os
-            _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                               "data", "inbox.json")
+            _p = _os.path.join(DATA, "inbox.json")
             try:
                 _store = _json.load(open(_p))
             except Exception:
@@ -406,15 +466,32 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
                 self._json(403, {"error": "bad csrf token"})
                 return
-            target = (body.get("target") or "").strip()
+            raw_targets = body.get("targets")
+            if isinstance(raw_targets, list):
+                target_inputs = [str(t).strip() for t in raw_targets]
+            else:
+                target_inputs = [str(body.get("target") or "").strip()]
             prefix = (body.get("prefix") or "ping").strip()
             try:
                 interval = max(5, min(300, int(body.get("interval") or 30)))
             except (ValueError, TypeError):
                 interval = 30
             import re as _re
-            if not _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) or target.startswith("-"):
-                self._json(400, {"error": "invalid target name"})
+            targets = []
+            for target in target_inputs:
+                if _re.fullmatch(r"chan:\d+", target):
+                    pass
+                elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target) and not target[3:].startswith("-"):
+                    pass
+                elif _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) and not target.startswith("-"):
+                    target = "dm:%s" % target
+                else:
+                    self._json(400, {"error": "invalid target"})
+                    return
+                if target not in targets:
+                    targets.append(target)
+            if not targets:
+                self._json(400, {"error": "invalid target"})
                 return
             if not _re.fullmatch(r"[A-Za-z0-9_./#@-]{1,40}", prefix) or prefix.startswith("-"):
                 self._json(400, {"error": "invalid prefix"})
@@ -423,14 +500,60 @@ class Handler(BaseHTTPRequestHandler):
                 if _range["running"]:
                     self._json(409, {"error": "range test already running"})
                     return
-                _range.update({"running": True, "target": target, "prefix": prefix,
-                                "interval": interval, "sent": 0, "acked": 0, "log": [],
+                _range.update({"running": True, "target": targets[0], "targets": targets,
+                                "prefix": prefix, "interval": interval, "sent": 0,
+                                "acked": 0, "per_target": {}, "log": [],
+                                "next_due_at": time.time(),
                                 "_init_note": "reloading contacts before first ping"})
-                t = threading.Thread(target=_range_loop, args=(target, prefix, interval),
+                t = threading.Thread(target=_range_loop, args=(targets, prefix, interval),
                                      daemon=True)
                 _range["thread"] = t
             t.start()
-            self._json(200, {"ok": True, "target": target, "interval": interval})
+            self._json(200, {"ok": True, "target": targets[0], "targets": targets,
+                             "interval": interval})
+        elif path == "/api/range/targets":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            raw_targets = body.get("targets")
+            target_inputs = [str(t).strip() for t in raw_targets] if isinstance(raw_targets, list) else []
+            import re as _re
+            targets = []
+            for target in target_inputs:
+                if _re.fullmatch(r"chan:\d+", target):
+                    pass
+                elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target) and not target[3:].startswith("-"):
+                    pass
+                elif _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) and not target.startswith("-"):
+                    target = "dm:%s" % target
+                else:
+                    self._json(400, {"error": "invalid target"})
+                    return
+                if target not in targets:
+                    targets.append(target)
+            if not targets:
+                self._json(400, {"error": "pick at least one target"})
+                return
+            with _range_lock:
+                if not _range["running"]:
+                    self._json(409, {"error": "range test is not running"})
+                    return
+                _range["target"] = targets[0]
+                _range["targets"] = targets
+                for target in targets:
+                    _range["per_target"].setdefault(target, {"sent": 0, "acked": 0})
+                snap = {k: _range[k] for k in
+                        ("running", "target", "prefix", "interval", "sent", "acked",
+                         "log", "next_due_at", "targets", "per_target")}
+                snap["server_now"] = time.time()
+            self._json(200, snap)
         elif path == "/api/range/stop":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})
@@ -444,6 +567,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with _range_lock:
                 _range["running"] = False
+                _range["next_due_at"] = None
             self._json(200, {"ok": True})
         elif path == "/api/send":
             if not _auth_set():
@@ -483,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
             # persist sent messages so they survive a page reload
             if ok:
                 import json as _json, os as _os
-                _p = _os.path.join(ROOT, "data", "inbox.json")
+                _p = _os.path.join(DATA, "inbox.json")
                 try:
                     _store = _json.load(open(_p))
                 except Exception:
@@ -495,11 +619,19 @@ class Handler(BaseHTTPRequestHandler):
                              else "chan%s" % t.split(":",1)[1] if t.startswith("chan:")
                              else t.split(":",1)[1] if ":" in t else t)
                     raw = "out|%s|%s" % (scope, text)
-                    _acked = _result_map.get(scope, {}).get("acked", False)
+                    _result = _result_map.get(scope, {})
+                    _acked = _result.get("acked", False)
                     if not any(m.get("raw") == raw for m in _store):
-                        _store.append({"scope": scope, "sender": None, "text": text,
-                                       "at": ts, "direction": "out", "raw": raw,
-                                       "acked": _acked})
+                        _msg = {"scope": scope, "sender": None, "text": text,
+                                "at": ts, "direction": "out", "raw": raw,
+                                "acked": _acked}
+                        if "route_hops" in _result:
+                            _msg["route_hops"] = _result.get("route_hops")
+                        if "route_mode" in _result:
+                            _msg["route_mode"] = _result.get("route_mode")
+                        if "route_path" in _result:
+                            _msg["route_path"] = _result.get("route_path")
+                        _store.append(_msg)
                 _store = _store[-300:]
                 try:
                     _os.makedirs(os.path.dirname(_p), exist_ok=True)

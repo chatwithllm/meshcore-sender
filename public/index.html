@@ -69,9 +69,11 @@
   #radio-btns{display:flex;gap:6px;margin-left:auto}
   #radio-btns button{padding:4px 10px;font-size:12px}
 
-  /* conversations panel fills remaining space */
-  #cv-anchor{flex:1;min-height:0;display:flex;flex-direction:column}
-  #cv-panel{flex:1;min-height:0;display:flex;flex-direction:column;
+  /* conversations panel stays bounded; the message list scrolls inside it. */
+  #app:not(.hide){flex:1;min-height:0;display:flex;flex-direction:column}
+  #cv-anchor{flex:0 0 auto;min-height:0;display:flex;flex-direction:column}
+  #cv-panel{height:clamp(420px, calc(100vh - 220px), 620px);min-height:0;
+            display:flex;flex-direction:column;
             background:var(--card);border:1px solid var(--line);
             border-radius:var(--radius);margin-bottom:10px;padding:0;overflow:hidden}
   #cv-panel > .dgroup{padding:10px 14px 8px;border-bottom:1px solid var(--line);
@@ -81,6 +83,8 @@
   #cv-sidebar{overflow-y:auto}
   #cv-main{min-height:0;display:flex;flex-direction:column}
   #cv-thread{flex:1;min-height:0;overflow-y:auto}
+  @media(max-height:650px){#cv-panel{height:420px}}
+  @media(max-width:600px){#cv-panel{height:calc(100vh - 190px);min-height:360px}}
 
   /* drawers */
   .drawer{border:1px solid var(--line);border-radius:var(--radius);
@@ -176,8 +180,13 @@
     </details>
 
     <details id="drawer-range" class="drawer">
-      <summary>Range test</summary>
+      <summary>Range test <span id="rt-summary-state" class="rt-summary-state"></span></summary>
       <div class="drawer-body" id="drawer-range-body"></div>
+    </details>
+
+    <details id="drawer-repeater-map" class="drawer">
+      <summary>Repeater map</summary>
+      <div class="drawer-body" id="drawer-repeater-map-body"></div>
     </details>
   </section>
 </main>
@@ -421,6 +430,7 @@ document.addEventListener('keydown', function (e) {
   }
   function chanIdx(id){ var n = parseInt(String(id).split(':')[1], 10); return isNaN(n) ? 99 : n; }
   var FILTER_KEY = 'mc.filter.v1';
+  var DEST_QUERY = '';
   var SECTION_LABEL = {node:'Nodes', repeater:'Repeaters', room:'Rooms', chan:'Channels'};
   var EMPTY = {node:'No nodes in range. Press Refresh, or send an advert.',
                repeater:'No repeaters in range.', room:'No room servers.',
@@ -441,7 +451,15 @@ document.addEventListener('keydown', function (e) {
   function render(){
     var h = host(); if (!h || !DATA.length) return;
     var f = filt();
-    var favItems = DATA.filter(function(i){ return isFav(i.id); }).sort(byName);
+    var q = DEST_QUERY.toLowerCase();
+    function matchesQuery(i){
+      if (!q) return true;
+      return String((i && i.name) || '').toLowerCase().indexOf(q) >= 0 ||
+        String((i && i.id) || '').toLowerCase().indexOf(q) >= 0 ||
+        sectionOf(i).toLowerCase().indexOf(q) >= 0;
+    }
+    var visible = DATA.filter(matchesQuery);
+    var favItems = visible.filter(function(i){ return isFav(i.id); }).sort(byName);
     var html = '';
     if (favItems.length && f === 'all') {
       html += '<div class="dfav"><div class="dgroup">\u2605 Favorites</div>' +
@@ -450,11 +468,15 @@ document.addEventListener('keydown', function (e) {
     var cols = '';
     ['node','repeater','room','chan'].forEach(function(sec){
       if (f !== 'all' && f !== sec) return;
-      var items = DATA.filter(function(i){ return sectionOf(i) === sec; })
+      var items = visible.filter(function(i){ return sectionOf(i) === sec; })
                       .sort(sec === 'chan' ? byChan : byName);
       cols += col(SECTION_LABEL[sec], items, EMPTY[sec]);
     });
-    if (!cols) cols = '<div class="dempty">Nothing in this filter.</div>';
+    if (!visible.length) {
+      cols = '<div class="dempty">No destinations match "' + esc(DEST_QUERY) + '".</div>';
+    } else if (!cols) {
+      cols = '<div class="dempty">Nothing in this filter.</div>';
+    }
     html += '<div class="dgrid">' + cols + '</div>';
     h.style.width = '100%';
     h.innerHTML = html;
@@ -466,6 +488,17 @@ document.addEventListener('keydown', function (e) {
     var t = [...document.querySelectorAll('*')].filter(function(e){
       return e.children.length === 0 && /^destination$/i.test((e.textContent||'').trim()); })[0];
     if (!t) return;
+    var search = document.getElementById('dest-search');
+    if (!search) {
+      search = document.createElement('input');
+      search.id = 'dest-search';
+      search.type = 'text';
+      search.placeholder = 'Search contacts or channels...';
+      search.autocomplete = 'off';
+      search.value = DEST_QUERY;
+      search.oninput = function(){ DEST_QUERY = search.value || ''; render(); };
+      t.parentElement.insertBefore(search, t.nextSibling);
+    }
     var bar = document.getElementById('dest-chips');
     if (!bar) {
       bar = document.createElement('div');
@@ -478,10 +511,205 @@ document.addEventListener('keydown', function (e) {
           b.onclick = function(){ localStorage.setItem(FILTER_KEY, p[0]); render(); };
           bar.appendChild(b);
         });
-      t.parentElement.insertBefore(bar, t.nextSibling);
+      search.parentElement.insertBefore(bar, search.nextSibling);
     }
     [...bar.querySelectorAll('.chip')].forEach(function(c){
       c.classList.toggle('on', c.dataset.f === filt()); });
+  }
+
+  function repeaterPoints(){
+    return (DATA || []).filter(function(d){
+      return d && d.kind === 'repeater' &&
+        typeof d.lat === 'number' && typeof d.lon === 'number' &&
+        isFinite(d.lat) && isFinite(d.lon);
+    }).sort(byName);
+  }
+
+  var MAP_SELECTED_ID = null;
+  var MAP_ZOOM_BUMP = 0;
+  var MAP_FIXED_ZOOM = null;
+  var MAP_CURRENT_ZOOM = null;
+  var MAP_PAN_X = 0;
+  var MAP_PAN_Y = 0;
+  var MAP_DRAG = null;
+  var MAP_DRAG_BOUND = false;
+  var MAP_POPUP_OPEN = true;
+
+  function renderRepeaterMap(){
+    var body = document.getElementById('drawer-repeater-map-body');
+    if (!body) return;
+    var pts = repeaterPoints();
+    if (!pts.length) {
+      body.innerHTML =
+        '<div class="map-empty">No repeaters with location data yet. Refresh after nearby repeaters advertise GPS coordinates.</div>';
+      return;
+    }
+    if (!MAP_SELECTED_ID || !pts.some(function(p){ return p.id === MAP_SELECTED_ID; })) {
+      MAP_SELECTED_ID = pts[0].id;
+    }
+    var selected = pts.filter(function(p){ return p.id === MAP_SELECTED_ID; })[0] || pts[0];
+    var minLat = Math.min.apply(null, pts.map(function(p){ return p.lat; }));
+    var maxLat = Math.max.apply(null, pts.map(function(p){ return p.lat; }));
+    var minLon = Math.min.apply(null, pts.map(function(p){ return p.lon; }));
+    var maxLon = Math.max.apply(null, pts.map(function(p){ return p.lon; }));
+    if (minLat === maxLat) { minLat -= 0.01; maxLat += 0.01; }
+    if (minLon === maxLon) { minLon -= 0.01; maxLon += 0.01; }
+    var padLat = (maxLat - minLat) * 0.12;
+    var padLon = (maxLon - minLon) * 0.12;
+    minLat -= padLat; maxLat += padLat; minLon -= padLon; maxLon += padLon;
+    var w = 760, h = 420, tile = 256;
+    function project(lat, lon, z){
+      var s = tile * Math.pow(2, z);
+      var sin = Math.sin(lat * Math.PI / 180);
+      return {
+        x: (lon + 180) / 360 * s,
+        y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * s
+      };
+    }
+    var zoom = 4;
+    for (var z = 4; z <= 13; z++) {
+      var nw = project(maxLat, minLon, z);
+      var se = project(minLat, maxLon, z);
+      if (Math.abs(se.x - nw.x) > w - 90 || Math.abs(se.y - nw.y) > h - 90) break;
+      zoom = z;
+    }
+    zoom = MAP_FIXED_ZOOM === null
+      ? Math.max(3, Math.min(18, zoom + MAP_ZOOM_BUMP))
+      : Math.max(3, Math.min(18, MAP_FIXED_ZOOM));
+    MAP_CURRENT_ZOOM = zoom;
+    var centerLat = (MAP_ZOOM_BUMP > 0 || MAP_FIXED_ZOOM !== null) ? selected.lat : (minLat + maxLat) / 2;
+    var centerLon = (MAP_ZOOM_BUMP > 0 || MAP_FIXED_ZOOM !== null) ? selected.lon : (minLon + maxLon) / 2;
+    var center = project(centerLat, centerLon, zoom);
+    var leftPx = center.x - w / 2 - MAP_PAN_X;
+    var topPx = center.y - h / 2 - MAP_PAN_Y;
+    var minTileX = Math.floor(leftPx / tile);
+    var maxTileX = Math.floor((leftPx + w) / tile);
+    var minTileY = Math.floor(topPx / tile);
+    var maxTileY = Math.floor((topPx + h) / tile);
+    var maxTile = Math.pow(2, zoom);
+    var tiles = '';
+    for (var tx = minTileX; tx <= maxTileX; tx++) {
+      for (var ty = minTileY; ty <= maxTileY; ty++) {
+        if (ty < 0 || ty >= maxTile) continue;
+        var wrappedX = ((tx % maxTile) + maxTile) % maxTile;
+        tiles += '<img class="map-tile" alt="" src="https://tile.openstreetmap.org/'+zoom+'/'+wrappedX+'/'+ty+'.png" ' +
+          'style="left:'+((tx * tile - leftPx).toFixed(1))+'px;top:'+((ty * tile - topPx).toFixed(1))+'px">';
+      }
+    }
+    var markers = pts.map(function(p, idx){
+      var pos = project(p.lat, p.lon, zoom);
+      var active = p.id === MAP_SELECTED_ID ? ' active' : '';
+      return '<button type="button" class="map-marker'+active+'" data-id="'+esc(p.id)+'" ' +
+        'style="left:'+(pos.x - leftPx).toFixed(1)+'px;top:'+(pos.y - topPx).toFixed(1)+'px" ' +
+        'title="'+esc(p.name || ('Repeater '+(idx+1)))+'"><span></span></button>';
+    }).join('');
+    var osmUrl = 'https://www.openstreetmap.org/?mlat='+encodeURIComponent(selected.lat.toFixed(6))+
+      '&mlon='+encodeURIComponent(selected.lon.toFixed(6))+'#map=13/'+
+      encodeURIComponent(selected.lat.toFixed(6))+'/'+encodeURIComponent(selected.lon.toFixed(6));
+    var selectedPos = project(selected.lat, selected.lon, zoom);
+    var popupX = Math.max(10, Math.min(w - 230, selectedPos.x - leftPx + 14));
+    var popupY = Math.max(10, Math.min(h - 120, selectedPos.y - topPx - 86));
+    var popup = MAP_POPUP_OPEN ?
+      '<div class="map-popup" style="left:'+popupX.toFixed(1)+'px;top:'+popupY.toFixed(1)+'px">' +
+        '<button type="button" class="map-popup-close" title="Close">×</button>' +
+        '<b>'+esc(selected.name || selected.id)+'</b>' +
+        '<span>'+esc(selected.lat.toFixed(5)+', '+selected.lon.toFixed(5))+'</span>' +
+        '<a href="'+osmUrl+'" target="_blank" rel="noopener">Open full map</a>' +
+      '</div>' : '';
+    var rows = pts.map(function(p){
+      var active = p.id === MAP_SELECTED_ID ? ' active' : '';
+      return '<button type="button" class="map-row'+active+'" data-id="'+esc(p.id)+'">' +
+        '<span><b>'+esc(p.name || p.id)+'</b><small>'+esc(p.lat.toFixed(5)+', '+p.lon.toFixed(5))+'</small></span>' +
+      '</button>';
+    }).join('');
+    body.innerHTML =
+      '<div class="map-wrap">' +
+        '<div>' +
+          '<div class="map-stage" style="height:'+h+'px">' + tiles + markers + popup +
+            '<div class="map-controls">' +
+              '<button type="button" id="map-zoom-in" title="Zoom in">+</button>' +
+              '<button type="button" id="map-zoom-out" title="Zoom out">-</button>' +
+              '<span>'+zoom+'</span>' +
+            '</div>' +
+            '<div class="map-attrib">© OpenStreetMap</div>' +
+          '</div>' +
+          '<div class="map-selected"><b>'+esc(selected.name || selected.id)+'</b> ' +
+            '<span>'+esc(selected.lat.toFixed(5)+', '+selected.lon.toFixed(5))+'</span> ' +
+            '<a href="'+osmUrl+'" target="_blank" rel="noopener">Open full map</a></div>' +
+        '</div>' +
+        '<div class="map-list"><div class="dgroup">Repeaters with GPS</div>'+rows+'</div>' +
+      '</div>';
+    body.querySelectorAll('.map-row').forEach(function(row){
+      row.onclick = function(){
+        MAP_SELECTED_ID = row.dataset.id || MAP_SELECTED_ID;
+        MAP_POPUP_OPEN = true;
+        MAP_FIXED_ZOOM = 13;
+        MAP_ZOOM_BUMP = 0;
+        MAP_PAN_X = 0;
+        MAP_PAN_Y = 0;
+        renderRepeaterMap();
+      };
+    });
+    body.querySelectorAll('.map-marker').forEach(function(marker){
+      marker.onclick = function(){
+        MAP_SELECTED_ID = marker.dataset.id || MAP_SELECTED_ID;
+        MAP_POPUP_OPEN = true;
+        renderRepeaterMap();
+      };
+    });
+    var close = body.querySelector('.map-popup-close');
+    if (close) {
+      close.onclick = function(e){
+        e.stopPropagation();
+        MAP_POPUP_OPEN = false;
+        renderRepeaterMap();
+      };
+    }
+    var stage = body.querySelector('.map-stage');
+    if (stage) {
+      stage.onwheel = function(e){
+        e.preventDefault();
+        MAP_FIXED_ZOOM = Math.max(3, Math.min(18, (MAP_CURRENT_ZOOM || 10) + (e.deltaY < 0 ? 1 : -1)));
+        MAP_ZOOM_BUMP = 0;
+        renderRepeaterMap();
+      };
+      stage.onpointerdown = function(e){
+        if (e.target.closest && e.target.closest('.map-controls')) return;
+        MAP_DRAG = {x:e.clientX, y:e.clientY, panX:MAP_PAN_X, panY:MAP_PAN_Y};
+        stage.setPointerCapture && stage.setPointerCapture(e.pointerId);
+        stage.classList.add('dragging');
+      };
+    }
+    if (!MAP_DRAG_BOUND) {
+      MAP_DRAG_BOUND = true;
+      document.addEventListener('pointermove', function(e){
+        if (!MAP_DRAG) return;
+        MAP_PAN_X = MAP_DRAG.panX + (e.clientX - MAP_DRAG.x);
+        MAP_PAN_Y = MAP_DRAG.panY + (e.clientY - MAP_DRAG.y);
+        renderRepeaterMap();
+      });
+      document.addEventListener('pointerup', function(){
+        MAP_DRAG = null;
+        var s = document.querySelector('.map-stage.dragging');
+        if (s) s.classList.remove('dragging');
+      });
+    }
+    var zin = document.getElementById('map-zoom-in');
+    var zout = document.getElementById('map-zoom-out');
+    if (zin) zin.onclick = function(){
+      MAP_FIXED_ZOOM = Math.max(3, Math.min(18, (MAP_CURRENT_ZOOM || 10) + 1));
+      MAP_ZOOM_BUMP = 0;
+      renderRepeaterMap();
+    };
+    if (zout) zout.onclick = function(){
+      MAP_FIXED_ZOOM = Math.max(3, Math.min(18, (MAP_CURRENT_ZOOM || 10) - 1));
+      MAP_ZOOM_BUMP = 0;
+      renderRepeaterMap();
+    };
+    setTimeout(function(){
+      var activeRow = body.querySelector('.map-row.active');
+      if (activeRow) activeRow.scrollIntoView({block:'nearest'});
+    }, 0);
   }
 
   // capture the data the page already fetches
@@ -490,7 +718,15 @@ document.addEventListener('keydown', function (e) {
     var p = orig.apply(this, arguments);
     if (String(u).indexOf('/api/nodes') >= 0) {
       p.then(function(r){ return r.clone().json(); })
-       .then(function(j){ DATA = j.nodes || []; setTimeout(render, 0); })
+       .then(function(j){
+         DATA = j.nodes || [];
+         if (window.__mcDest) window.__mcDest._data = DATA;
+         if (window.__range && window.__range.populateTarget) {
+           window.__range.populateTarget(DATA);
+         }
+         renderRepeaterMap();
+         setTimeout(render, 0);
+       })
        .catch(function(){});
     }
     return p;
@@ -686,19 +922,123 @@ document.addEventListener('keydown', function (e) {
   // ---- RANGE TEST -----------------------------------------------------------
   var _rangeRunning = false;
   var _rangePoll = null;
+  var _rangeTicker = null;
+  var RT_DUE_MS = null;
+  var RT_INTERVAL_MS = 30000;
+  var RT_DATA = [];
+  var RT_FILTER = 'all';
+  var RT_QUERY = '';
+  var RT_SELECTED = [];
+
+  function rtKind(d){
+    if (!d || !d.id) return 'node';
+    if (d.id.indexOf('chan:') === 0) return 'chan';
+    return (d.kind === 'repeater' || d.kind === 'room') ? d.kind : 'node';
+  }
+
+  function rtKindLabel(k){
+    return {node:'Node', repeater:'Repeater', room:'Room', chan:'Channel'}[k] || 'Node';
+  }
 
   function populateRangeTarget(data){
-    var sel = document.getElementById('rt-target');
-    if (!sel) return;
-    var prev = sel.value;
-    // Only DM contacts (not channels) make sense for range test
-    var contacts = (data || []).filter(function(d){ return d.id && d.id.startsWith('dm:'); });
-    sel.innerHTML = '<option value="">— pick contact —</option>' +
-      contacts.map(function(d){
-        return '<option value="' + esc(d.name) + '"' +
-               (d.name === prev ? ' selected' : '') + '>' +
-               esc(d.name) + '</option>';
+    RT_DATA = data || [];
+    renderRangeTargets();
+  }
+
+  function rtTargetName(id){
+    var found = RT_DATA.filter(function(d){ return d.id === id; })[0];
+    if (found) return found.name || found.id;
+    return String(id || '').replace(/^dm:/, '');
+  }
+
+  function rtSetHidden(){
+    var hidden = document.getElementById('rt-target');
+    if (hidden) hidden.value = RT_SELECTED.join(',');
+  }
+
+  function rtUpdateSelectedNote(){
+    var note = document.getElementById('rt-target-note');
+    if (!note) return;
+    if (!RT_SELECTED.length) {
+      note.textContent = 'Pick one or more targets.';
+    } else if (RT_SELECTED.length === 1) {
+      var only = RT_SELECTED[0];
+      note.textContent = rtTargetName(only) + ' selected' +
+        (only.indexOf('chan:') === 0 ? ' · channel broadcasts do not return delivery ACKs' : '');
+    } else {
+      note.textContent = RT_SELECTED.length + ' targets selected';
+    }
+  }
+
+  function rtUpdateRunningTargets(){
+    if (!_rangeRunning) return;
+    if (!RT_SELECTED.length) {
+      alert('Keep at least one target selected while range test is running.');
+      return;
+    }
+    fetch('/api/session', {credentials:'same-origin'}).then(function(r){ return r.json(); })
+      .then(function(sess){
+        return fetch('/api/range/targets', {method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''},
+          body: JSON.stringify({targets: RT_SELECTED})});
+      }).then(function(r){ return r.json(); })
+      .then(function(s){
+        if (s.error) { alert('Could not update targets: ' + s.error); rangePollStatus(); return; }
+        rtUpdateUI(s);
+      }).catch(function(){ rangePollStatus(); });
+  }
+
+  function renderRangeTargets(){
+    var list = document.getElementById('rt-target-list');
+    var hidden = document.getElementById('rt-target');
+    var note = document.getElementById('rt-target-note');
+    if (!list || !hidden) return;
+    var q = RT_QUERY.toLowerCase();
+    var items = RT_DATA.filter(function(d){
+      if (!d || !d.id) return false;
+      var kind = rtKind(d);
+      if (RT_FILTER !== 'all' && kind !== RT_FILTER) return false;
+      if (q && String(d.name || '').toLowerCase().indexOf(q) < 0 &&
+          String(d.id || '').toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function(a,b){
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    if (!items.length) {
+      list.innerHTML = '<div class="rt-empty">No matching targets.</div>';
+    } else {
+      list.innerHTML = items.map(function(d){
+        var kind = rtKind(d);
+        var active = RT_SELECTED.indexOf(d.id) >= 0 ? ' active' : '';
+        return '<button type="button" class="rt-target'+active+'" data-id="'+esc(d.id)+'" data-name="'+esc(d.name || d.id)+'">' +
+          '<span class="rt-target-name">'+esc(d.name || d.id)+'</span>' +
+          '<span class="rt-target-kind">'+rtKindLabel(kind)+'</span>' +
+          '</button>';
       }).join('');
+    }
+    list.querySelectorAll('.rt-target').forEach(function(btn){
+      btn.onclick = function(){
+        var id = btn.dataset.id || '';
+        var idx = RT_SELECTED.indexOf(id);
+        if (idx >= 0) {
+          if (_rangeRunning && RT_SELECTED.length <= 1) {
+            alert('Stop the range test before removing the last target.');
+            return;
+          }
+          RT_SELECTED.splice(idx, 1);
+        }
+        else RT_SELECTED.push(id);
+        rtSetHidden();
+        rtUpdateSelectedNote();
+        renderRangeTargets();
+        rtUpdateRunningTargets();
+      };
+    });
+    rtSetHidden();
+    rtUpdateSelectedNote();
+    document.querySelectorAll('#rt-filters .chip').forEach(function(btn){
+      btn.classList.toggle('on', btn.dataset.filter === RT_FILTER);
+    });
   }
 
   function addRangeTest(){
@@ -709,18 +1049,40 @@ document.addEventListener('keydown', function (e) {
     card.className = 'card'; card.id = 'range-card';
     card.innerHTML =
       '<div class="dgroup" style="margin-bottom:8px">Range test</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">' +
-        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Target contact</label>' +
-          '<select id="rt-target" style="width:100%"><option value="">— pick contact —</option></select></div>' +
-        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
-          '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
-        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
-          '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%"></div>' +
-      '</div>' +
-      '<div class="row" style="margin-bottom:10px">' +
-        '<button id="rt-start">Start</button>' +
-        '<button id="rt-stop" class="ghost" disabled>Stop</button>' +
-        '<span id="rt-stats" style="font-size:12px;color:var(--mut);margin-left:auto"></span>' +
+      '<div class="rt-layout">' +
+        '<div class="rt-controls">' +
+          '<div class="rt-form-grid">' +
+            '<div><label style="font-size:11px;display:block;margin-bottom:4px">Target</label>' +
+              '<input id="rt-target" type="hidden">' +
+              '<input id="rt-search" type="text" placeholder="Search nodes or channels…" style="width:100%;margin-bottom:6px">' +
+              '<div id="rt-filters" class="chips" style="margin-bottom:6px">' +
+                '<button type="button" class="chip on" data-filter="all">All</button>' +
+                '<button type="button" class="chip" data-filter="node">Nodes</button>' +
+                '<button type="button" class="chip" data-filter="repeater">Repeaters</button>' +
+                '<button type="button" class="chip" data-filter="room">Rooms</button>' +
+                '<button type="button" class="chip" data-filter="chan">Channels</button>' +
+              '</div>' +
+              '<div id="rt-target-list" class="rt-target-list"></div>' +
+              '<div id="rt-target-note" class="note" style="margin-top:6px"></div></div>' +
+            '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
+              '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
+            '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
+              '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%"></div>' +
+          '</div>' +
+          '<div class="row" style="margin-bottom:10px">' +
+            '<button id="rt-start">Start</button>' +
+            '<button id="rt-stop" class="ghost" disabled>Stop</button>' +
+            '<span id="rt-stats" style="font-size:12px;color:var(--mut);margin-left:auto"></span>' +
+          '</div>' +
+          '<div id="rt-clock" class="rt-clock idle">' +
+            '<div class="rt-clock-label">Range test idle</div>' +
+            '<div class="rt-clock-track"><div id="rt-clock-fill" class="rt-clock-fill"></div></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="rt-side">' +
+          '<div class="dgroup">Node stats</div>' +
+          '<div id="rt-target-stats" class="rt-target-stats"></div>' +
+        '</div>' +
       '</div>' +
       '<div id="rt-log" style="font:12px ui-monospace,SFMono-Regular,Menlo,monospace;' +
            'max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:6px">' +
@@ -729,23 +1091,124 @@ document.addEventListener('keydown', function (e) {
     inbox.parentElement.appendChild(card);
     document.getElementById('rt-start').onclick = rangeStart;
     document.getElementById('rt-stop').onclick = rangeStop;
+    document.getElementById('rt-search').oninput = function(){
+      RT_QUERY = this.value || '';
+      renderRangeTargets();
+    };
+    document.querySelectorAll('#rt-filters .chip').forEach(function(btn){
+      btn.onclick = function(){
+        RT_FILTER = btn.dataset.filter || 'all';
+        renderRangeTargets();
+      };
+    });
     // populate now in case destinations already loaded before card existed
     populateRangeTarget(window.__mcDest && window.__mcDest.getData ? window.__mcDest.getData() : []);
   }
 
   function rtLogEntry(e){
-    var col = e.acked ? '#58c07a' : '#e88d7a';
+    var isBroadcast = /channel broadcast/i.test(e.detail || '');
+    var col = e.acked ? '#58c07a' : isBroadcast ? '#a3aab8' : '#e88d7a';
+    var targetName = e.target ? rtTargetName(e.target) + ' ' : '';
     return '<div style="padding:2px 0;border-bottom:1px solid #ffffff10">' +
       '<span style="color:#8fb8d8">' + esc(e.ts) + '</span> ' +
-      '<span style="color:' + col + '">' + (e.acked ? '✓' : '✗') + '</span> ' +
-      '#' + e.seq +
+      '<span style="color:' + col + '">' + (e.acked ? '✓' : isBroadcast ? '•' : '✗') + '</span> ' +
+      '<span style="opacity:.75">' + esc(targetName) + '</span>#' + e.seq +
       (e.acked ? ' <span style="opacity:.55">' + e.rtt_ms + 'ms</span>' : '') +
       (e.acked ? '' : ' <span style="opacity:.4;font-size:10px">' + esc((e.detail||'').slice(0,60)) + '</span>') +
       '</div>';
   }
 
+  function rtTargetCount(s){
+    return (s.targets && s.targets.length) || (s.target ? 1 : RT_SELECTED.length);
+  }
+
+  function rtRenderTargetStats(s){
+    var box = document.getElementById('rt-target-stats');
+    if (!box) return;
+    var targets = s.targets || (s.target ? [s.target] : []);
+    var per = s.per_target || {};
+    if (!s.running && !s.sent) {
+      box.innerHTML = '<div class="rt-empty">Select targets and start a test.</div>';
+      return;
+    }
+    box.innerHTML = targets.map(function(t){
+      var stat = per[t] || {sent:0, acked:0};
+      var pct = stat.sent ? Math.round(stat.acked / stat.sent * 100) : 0;
+      var missed = Math.max(0, stat.sent - stat.acked);
+      var channel = String(t).indexOf('chan:') === 0;
+      return '<div class="rt-target-stat">' +
+        '<div class="rt-target-stat-head"><span class="rt-target-stat-name">'+esc(rtTargetName(t))+'</span>' +
+          '<span class="rt-target-stat-pct">'+(channel ? 'broadcast' : esc(pct + '%'))+'</span></div>' +
+        '<div class="rt-target-stat-grid">' +
+          '<span><b>'+esc(stat.sent)+'</b><small>sent</small></span>' +
+          '<span><b>'+esc(stat.acked)+'</b><small>ack</small></span>' +
+          '<span><b>'+esc(channel ? '-' : missed)+'</b><small>miss</small></span>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function rtUpdateClock(){
+    var clock = document.getElementById('rt-clock');
+    var fill = document.getElementById('rt-clock-fill');
+    var label = clock && clock.querySelector('.rt-clock-label');
+    var drawer = document.getElementById('drawer-range');
+    var summary = document.getElementById('rt-summary-state');
+    function setSummary(text, state){
+      if (drawer) {
+        drawer.classList.toggle('range-live', state === 'live' || state === 'due');
+        drawer.classList.toggle('range-due', state === 'due');
+      }
+      if (summary) summary.innerHTML = text ? '<span></span>' + esc(text) : '';
+    }
+    if (!clock || !fill || !label) {
+      setSummary('', 'idle');
+      return;
+    }
+    if (!_rangeRunning || !RT_DUE_MS) {
+      clock.className = 'rt-clock idle';
+      label.textContent = 'Range test idle';
+      fill.style.width = '0%';
+      setSummary('', 'idle');
+      return;
+    }
+    var remaining = RT_DUE_MS - Date.now();
+    var pct = 100 - Math.max(0, Math.min(100, remaining / RT_INTERVAL_MS * 100));
+    clock.className = 'rt-clock' + (remaining <= 0 ? ' due' : '');
+    fill.style.width = pct.toFixed(1) + '%';
+    label.textContent = remaining <= 0
+      ? 'Sending next ping...'
+      : 'Next ping in ' + Math.ceil(remaining / 1000) + 's';
+    var base = window.__rtSummaryBase || '';
+    var next = remaining <= 0 ? 'sending...' : 'next ' + Math.ceil(remaining / 1000) + 's';
+    setSummary((base ? base + ' · ' : '') + next, remaining <= 0 ? 'due' : 'live');
+  }
+
+  function rtSyncClock(s){
+    RT_INTERVAL_MS = Math.max(1000, Number(s.interval || 30) * 1000);
+    if (s.running && s.next_due_at) {
+      var serverNow = Number(s.server_now || (Date.now() / 1000));
+      RT_DUE_MS = Date.now() + Math.max(0, (Number(s.next_due_at) - serverNow) * 1000);
+    } else if (s.running && !RT_DUE_MS) {
+      RT_DUE_MS = Date.now() + RT_INTERVAL_MS;
+    } else if (!s.running) {
+      RT_DUE_MS = null;
+    }
+    if (s.running && !_rangeTicker) {
+      _rangeTicker = setInterval(rtUpdateClock, 250);
+    } else if (!s.running && _rangeTicker) {
+      clearInterval(_rangeTicker); _rangeTicker = null;
+    }
+    rtUpdateClock();
+  }
+
   function rtUpdateUI(s){
     _rangeRunning = s.running;
+    if (s.targets && s.targets.length) {
+      RT_SELECTED = s.targets.slice();
+      rtSetHidden();
+      renderRangeTargets();
+    }
     var startBtn = document.getElementById('rt-start');
     var stopBtn  = document.getElementById('rt-stop');
     if (!startBtn) return;
@@ -753,19 +1216,31 @@ document.addEventListener('keydown', function (e) {
     stopBtn.disabled  = !s.running;
     var pct = s.sent ? Math.round(s.acked / s.sent * 100) : 0;
     var stats = document.getElementById('rt-stats');
+    var targetCount = rtTargetCount(s);
+    window.__rtSummaryBase = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
+      (s.sent ? ' · ' + s.sent + ' sent · ' + s.acked + ' acked' : '');
     if (s.sent) {
-      stats.textContent = s.sent + ' sent · ' + s.acked + ' acked · ' + pct + '%';
-      stats.style.color = pct >= 80 ? '#58c07a' : pct >= 50 ? '#e8c44a' : '#e88d7a';
+      if (targetCount === 1 && String(s.target || '').indexOf('chan:') === 0) {
+        stats.textContent = s.sent + ' broadcasts · no ACK expected';
+        stats.style.color = 'var(--mut)';
+      } else {
+        stats.textContent = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
+          ' · ' + s.sent + ' sent · ' + s.acked + ' acked · ' + pct + '%';
+        stats.style.color = pct >= 80 ? '#58c07a' : pct >= 50 ? '#e8c44a' : '#e88d7a';
+      }
     } else if (s.running) {
       stats.textContent = 'waiting for first ping…';
       stats.style.color = 'var(--mut)';
     } else {
       stats.textContent = '';
+      window.__rtSummaryBase = '';
     }
     var log = document.getElementById('rt-log');
     if (log && s.log && s.log.length) {
       log.innerHTML = [...s.log].reverse().slice(0, 60).map(rtLogEntry).join('');
     }
+    rtRenderTargetStats(s);
+    rtSyncClock(s);
     if (s.running && !_rangePoll) {
       _rangePoll = setInterval(rangePollStatus, 3000);
     } else if (!s.running && _rangePoll) {
@@ -782,23 +1257,26 @@ document.addEventListener('keydown', function (e) {
 
   function rangeStart(){
     var target   = (document.getElementById('rt-target').value || '').trim();
+    var targets  = RT_SELECTED.length ? RT_SELECTED.slice() :
+      target.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
     var prefix   = (document.getElementById('rt-prefix').value || 'ping').trim();
     var interval = parseInt(document.getElementById('rt-interval').value, 10) || 30;
-    if (!target) { alert('Pick a target contact.'); return; }
+    if (!targets.length) { alert('Pick one or more targets.'); return; }
     fetch('/api/session', {credentials:'same-origin'}).then(function(r){ return r.json(); })
       .then(function(sess){
         return fetch('/api/range/start', {method:'POST', credentials:'same-origin',
           headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''},
-          body: JSON.stringify({target: target, prefix: prefix, interval: interval})});
+          body: JSON.stringify({targets: targets, prefix: prefix, interval: interval})});
       }).then(function(r){ return r.json(); })
       .then(function(j){
         if (!j.ok) { alert('Failed to start: ' + (j.error || 'unknown')); return; }
         var log = document.getElementById('rt-log');
-        if (log) log.innerHTML = '<div style="opacity:.4">Started. First ping in ~5s…</div>';
+        if (log) log.innerHTML = '<div style="opacity:.4">Started. Sending now, then every ' + interval + 's…</div>';
         var stats = document.getElementById('rt-stats');
         if (stats) { stats.textContent = ''; stats.style.color = 'var(--mut)'; }
-        rtUpdateUI({running:true, target:target, prefix:prefix, interval:interval,
-                    sent:0, acked:0, log:[]});
+        rtUpdateUI({running:true, target:targets[0], targets:targets, prefix:prefix, interval:interval,
+                    sent:0, acked:0, log:[], next_due_at:(Date.now()/1000)+interval,
+                    server_now:(Date.now()/1000)});
       }).catch(function(e){ alert('Error: ' + e); });
   }
 
@@ -841,13 +1319,22 @@ document.addEventListener('keydown', function (e) {
     stop: rangeStop,
     poll: rangePollStatus,
     updateUI: rtUpdateUI,
+    populateTarget: populateRangeTarget,
   };
 
-  setTimeout(addRangeTest, 800);
+  setTimeout(function(){ addRangeTest(); rangePollStatus(); }, 800);
   document.addEventListener('click', function(){ setTimeout(addRangeTest, 800); }, true);
 
   // debug hook, used by the automated check
-  window.__mcDest = { render: render, setData: function(d){ DATA = d; render(); },
+  window.__mcDest = { _data: DATA, render: render,
+                     getData: function(){ return DATA; },
+                     setData: function(d){
+                       DATA = d || [];
+                       window.__mcDest._data = DATA;
+                       render();
+                       populateRangeTarget(DATA);
+                       renderRepeaterMap();
+                     },
                      nameFor: function(id){ var f = DATA.filter(function(i){ return i.id === id; })[0];
                        if (!f) return null;
                        if (String(id).indexOf("chan:") === 0 && /public/i.test(f.name)) return "Public channel";
@@ -870,6 +1357,7 @@ document.addEventListener('keydown', function (e) {
     '.irow{display:block;padding:4px 0;font-size:13px;border-bottom:1px solid #ffffff12}' +
     '.irow .t{color:#8fb8d8;font-size:11px}' +
     '.irow .who{font-weight:600;margin-right:4px}' +
+    '#dest-search{width:100%;margin:6px 0 8px;padding:8px 10px;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:13px}' +
     '.chip.on{background:#3b82f6;border-color:#3b82f6;color:#fff;opacity:1}' +
     '.chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}' +
     '.chip{border:1px solid #ffffff26;background:none;color:inherit;font-size:12px;padding:3px 10px;border-radius:999px;cursor:pointer;opacity:.75}' +
@@ -878,7 +1366,70 @@ document.addEventListener('keydown', function (e) {
     '.dcol{min-width:0}' +
     '.dname{flex:1 1 auto;min-width:5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.dbadge,.star,.did{flex:0 0 auto}' +
-    '.dempty{font-size:12px;opacity:.5;line-height:1.4;padding:2px 0 6px}';
+    '.dempty{font-size:12px;opacity:.5;line-height:1.4;padding:2px 0 6px}' +
+    '.rt-target-list{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:4px;display:flex;flex-direction:column;gap:3px}' +
+    '.rt-target{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;color:var(--ink);border:0;border-radius:5px;padding:6px 8px;text-align:left;cursor:pointer}' +
+    '.rt-target:hover{background:#1e222b}' +
+    '.rt-target.active{background:#1a2236;outline:1px solid var(--accent)}' +
+    '.rt-target-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:13px}' +
+    '.rt-target-kind{flex:0 0 auto;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);border:1px solid #ffffff26;border-radius:4px;padding:1px 5px}' +
+    '.rt-empty{font-size:12px;color:var(--mut);padding:8px}' +
+    '.rt-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:12px;align-items:start}' +
+    '.rt-form-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(160px,.8fr) minmax(120px,.6fr);gap:8px;margin-bottom:10px}' +
+    '@media(max-width:860px){.rt-layout,.rt-form-grid{grid-template-columns:1fr}}' +
+    '.rt-side{border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:10px;min-height:150px}' +
+    '.rt-clock{margin:-2px 0 10px;color:var(--mut);font-size:12px}' +
+    '.rt-clock-label{margin-bottom:5px}' +
+    '.rt-clock-track{height:6px;background:#0c0e12;border:1px solid var(--line);border-radius:999px;overflow:hidden}' +
+    '.rt-clock-fill{height:100%;width:0%;background:#4da3ff;border-radius:999px;transition:width .2s linear}' +
+    '.rt-clock.due .rt-clock-fill{background:#e8c44a}' +
+    '.rt-clock.idle{opacity:.55}' +
+    '.rt-target-stats{display:flex;flex-direction:column;gap:8px}' +
+    '.rt-target-stat{border:1px solid var(--line);border-radius:6px;background:#11151d;padding:8px;font-size:12px}' +
+    '.rt-target-stat-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}' +
+    '.rt-target-stat-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650}' +
+    '.rt-target-stat-pct{flex:0 0 auto;color:#58c07a;font-weight:700}' +
+    '.rt-target-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}' +
+    '.rt-target-stat-grid span{border:1px solid #ffffff14;border-radius:5px;padding:5px 6px;background:#0c0e12}' +
+    '.rt-target-stat-grid b{display:block;font-size:14px;color:var(--ink)}' +
+    '.rt-target-stat-grid small{display:block;margin-top:1px;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.06em}' +
+    '#drawer-range.range-live summary{position:relative;overflow:hidden}' +
+    '#drawer-range.range-live summary::after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,#4da3ff,#58c07a,#4da3ff);background-size:200% 100%;animation:rt-live-sweep 1.6s linear infinite}' +
+    '.rt-summary-state{float:right;display:inline-flex;align-items:center;gap:6px;color:#58c07a;font-size:11px;text-transform:none;letter-spacing:0;font-weight:700}' +
+    '.rt-summary-state span{width:7px;height:7px;border-radius:999px;background:#58c07a;box-shadow:0 0 0 0 #58c07a80;animation:rt-live-pulse 1.2s ease-out infinite}' +
+    '#drawer-range.range-due .rt-summary-state{color:#e8c44a}' +
+    '#drawer-range.range-due .rt-summary-state span{background:#e8c44a;animation:rt-due-pulse .7s ease-out infinite}' +
+    '@keyframes rt-live-pulse{0%{box-shadow:0 0 0 0 #58c07a80}100%{box-shadow:0 0 0 8px #58c07a00}}' +
+    '@keyframes rt-due-pulse{0%{transform:scale(1);box-shadow:0 0 0 0 #e8c44a99}100%{transform:scale(1.25);box-shadow:0 0 0 8px #e8c44a00}}' +
+    '@keyframes rt-live-sweep{0%{background-position:0 0}100%{background-position:200% 0}}' +
+    '.map-empty{font-size:13px;color:var(--mut);line-height:1.4}' +
+    '.map-wrap{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:12px;align-items:stretch}' +
+    '@media (max-width:820px){.map-wrap{grid-template-columns:1fr}}' +
+    '.map-stage{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:#0c0e12;cursor:grab;touch-action:none}' +
+    '.map-stage.dragging{cursor:grabbing}' +
+    '.map-tile{position:absolute;width:256px;height:256px;max-width:none;user-select:none}' +
+    '.map-marker{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:0;background:transparent;cursor:pointer;z-index:2}' +
+    '.map-marker span{display:block;width:12px;height:12px;margin:5px;border-radius:999px;background:#40b66f;border:2px solid #eafff1;box-shadow:0 1px 5px #0008}' +
+    '.map-marker.active span{width:18px;height:18px;margin:2px;background:#4da3ff;border-color:#fff;box-shadow:0 0 0 4px #4da3ff55,0 2px 9px #000a}' +
+    '.map-controls{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:4px;background:#0009;border:1px solid #ffffff33;border-radius:6px;padding:4px;z-index:4}' +
+    '.map-controls button{width:26px;height:26px;border-radius:4px;border:1px solid #ffffff33;background:#111827;color:#fff;font-size:18px;line-height:1;cursor:pointer;padding:0}' +
+    '.map-controls button:hover{background:#1f2937}' +
+    '.map-controls span{min-width:22px;text-align:center;color:#d7dde8;font-size:11px}' +
+    '.map-attrib{position:absolute;right:6px;bottom:5px;background:#0009;color:#fff;font-size:10px;padding:2px 5px;border-radius:4px;z-index:3}' +
+    '.map-popup{position:absolute;z-index:5;width:220px;background:#111827;color:var(--ink);border:1px solid #4da3ff;border-radius:8px;padding:10px 12px;box-shadow:0 8px 24px #0009;cursor:auto}' +
+    '.map-popup b{display:block;font-size:14px;margin-right:22px;margin-bottom:4px}' +
+    '.map-popup span{display:block;color:var(--mut);font-size:12px;margin-bottom:6px}' +
+    '.map-popup a{color:#79b7ff;text-decoration:none;border-bottom:1px solid #79b7ff66;font-size:12px}' +
+    '.map-popup-close{position:absolute;right:6px;top:6px;width:22px;height:22px;border:0;border-radius:5px;background:transparent;color:var(--mut);font-size:18px;line-height:1;cursor:pointer;padding:0}' +
+    '.map-popup-close:hover{background:#ffffff12;color:var(--ink)}' +
+    '.map-selected{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--mut)}' +
+    '.map-selected b{color:var(--ink);font-size:13px}' +
+    '.map-selected a{color:#79b7ff;text-decoration:none;border-bottom:1px solid #79b7ff66}' +
+    '.map-list{min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px;background:#0c0e12;max-height:458px;overflow:auto}' +
+    '.map-row{width:100%;display:block;text-align:left;background:transparent;color:var(--ink);border:0;border-radius:6px;padding:7px 8px;cursor:pointer}' +
+    '.map-row:hover,.map-row.active{background:#1e222b}' +
+    '.map-row.active{outline:1px solid #4da3ff}' +
+    '.map-row small{display:block;color:var(--mut);font-size:11px;margin-top:2px}';
   document.head.appendChild(st);
 })();
 
@@ -894,9 +1445,44 @@ document.addEventListener('keydown', function (e) {
   var contacts = [];     // [{id, name, kind}]
   var _csrf = null;
   var _pollTimer = null;
+  var READ_KEY = 'mc.threadRead.v1';
+  var readCounts = loadReadCounts();
 
   function esc(s){ return String(s||'').replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function routeLabel(m) {
+    if (!m) return '';
+    if (m.route_mode === 'flood') return 'flood route';
+    if (m.route_hops === null || typeof m.route_hops === 'undefined') return '';
+    var hops = Number(m.route_hops);
+    if (!isFinite(hops)) return '';
+    if (hops <= 0) return 'direct';
+    return hops + ' hop' + (hops === 1 ? '' : 's');
+  }
+
+  function loadReadCounts() {
+    try { return JSON.parse(localStorage.getItem(READ_KEY) || '{}') || {}; }
+    catch(e) { return {}; }
+  }
+
+  function saveReadCounts() {
+    try { localStorage.setItem(READ_KEY, JSON.stringify(readCounts)); } catch(e) {}
+  }
+
+  function inboundCount(id) {
+    return (threads[id] || []).filter(function(m){ return m.dir === 'in'; }).length;
+  }
+
+  function unreadCount(id) {
+    return Math.max(0, inboundCount(id) - (readCounts[id] || 0));
+  }
+
+  function markRead(id) {
+    if (!id) return;
+    readCounts[id] = inboundCount(id);
+    saveReadCounts();
+  }
 
   // ── session / csrf ──────────────────────────────────────────────────────
   function getCSRF(){
@@ -925,8 +1511,12 @@ document.addEventListener('keydown', function (e) {
         who: m.sender || (dir==='out' ? 'you' : m.scope),
         text: m.text||'',
         at: m.at || new Date().toTimeString().slice(0,8),
-        acked: m.acked
+        acked: m.acked,
+        route_hops: m.route_hops,
+        route_mode: m.route_mode,
+        route_path: m.route_path || []
       });
+      if (tid === activeId && dir === 'in') markRead(tid);
       changed = true;
       // ensure sidebar has this thread even if not in contacts list
       if (!contacts.find(function(c){return c.id===tid;})) {
@@ -967,22 +1557,25 @@ document.addEventListener('keydown', function (e) {
       var ha = (threads[a.id]||[]).length, hb = (threads[b.id]||[]).length;
       return (hb>0?1:0)-(ha>0?1:0) || String(a.name).localeCompare(String(b.name));
     });
+    renderMissed(sorted);
     ul.innerHTML = sorted.map(function(c){
-      var unread = threads[c.id] ? threads[c.id].length : 0;
+      var unread = unreadCount(c.id);
       var last = threads[c.id] && threads[c.id].length
                  ? threads[c.id][threads[c.id].length-1] : null;
       var preview = last ? esc(last.text.slice(0,28))+(last.text.length>28?'…':'') : '';
       var active  = c.id === activeId ? ' cv-active' : '';
       return '<div class="cv-row'+active+'" data-id="'+esc(c.id)+'">' +
-        '<div class="cv-name">'+esc(c.name)+'</div>' +
+        '<div class="cv-name"><span>'+esc(c.name)+'</span>' +
+        (unread ? '<span class="cv-badge">'+unread+'</span>' : '') + '</div>' +
         (preview ? '<div class="cv-preview">'+preview+'</div>' : '') +
         '</div>';
     }).join('');
     ul.querySelectorAll('.cv-row').forEach(function(el){
       el.addEventListener('click',function(){
         activeId = el.dataset.id;
+        markRead(activeId);
         renderSidebar();
-        renderThread();
+        renderThread(true);
         var hdr = document.getElementById('cv-hdr');
         if (hdr) {
           var c = contacts.find(function(x){return x.id===activeId;});
@@ -992,19 +1585,108 @@ document.addEventListener('keydown', function (e) {
     });
   }
 
-  function renderThread(){
+  function renderMissed(sorted) {
+    var box = document.getElementById('cv-missed');
+    if (!box) return;
+    var missed = sorted.filter(function(c){ return unreadCount(c.id) > 0; });
+    if (!missed.length) { box.innerHTML = ''; box.classList.add('hide'); return; }
+    box.classList.remove('hide');
+    box.innerHTML = '<div class="cv-missed-title">Missed</div>' +
+      missed.slice(0, 4).map(function(c){
+        var n = unreadCount(c.id);
+        return '<button type="button" class="cv-missed-row" data-id="'+esc(c.id)+'">' +
+          '<span>'+esc(c.name)+'</span><span class="cv-badge">'+n+'</span></button>';
+      }).join('');
+    box.querySelectorAll('.cv-missed-row').forEach(function(el){
+      el.addEventListener('click', function(){
+        activeId = el.dataset.id;
+        markRead(activeId);
+        renderSidebar();
+        renderThread(true);
+        var hdr = document.getElementById('cv-hdr');
+        if (hdr) {
+          var c = contacts.find(function(x){return x.id===activeId;});
+          hdr.textContent = c ? c.name : activeId;
+        }
+      });
+    });
+  }
+
+  function showRouteDetails(m) {
+    var panel = document.getElementById('cv-route-panel');
+    var main = document.getElementById('cv-main');
+    if (!panel || !main) return;
+    main.classList.add('route-open');
+    var label = routeLabel(m) || 'route';
+    var path = m.route_path || [];
+    var body = '';
+    if (path.length) {
+      body = path.map(function(h){
+        var name = h.name ? esc(h.name) : 'Unknown hop';
+        var note = h.ambiguous ? ' · ambiguous match' : '';
+        return '<div class="cv-hop">' +
+          '<span class="cv-hop-index">'+h.index+'</span>' +
+          '<div><div class="cv-hop-name">'+name+'</div>' +
+          '<div class="cv-hop-hash">'+esc(h.hash)+note+'</div></div>' +
+          '</div>';
+      }).join('');
+    } else if (m.route_mode === 'direct') {
+      body = '<div class="cv-route-empty">Direct path. No repeater hops.</div>';
+    } else if (m.route_mode === 'routed' && activeId && activeId.indexOf('dm:') === 0) {
+      body = '<div class="cv-route-empty">Looking up the current route for this contact…</div>';
+    }
+    panel.innerHTML =
+      '<div class="cv-route-head"><div><div class="cv-route-k">Route</div>' +
+      '<div class="cv-route-title">'+esc(label)+'</div></div>' +
+      '<button type="button" id="cv-route-close" title="Close">×</button></div>' +
+      body;
+    document.getElementById('cv-route-close').onclick = function(){
+      main.classList.remove('route-open');
+      panel.innerHTML = '';
+    };
+    if (!path.length && m.route_mode === 'routed' && activeId && activeId.indexOf('dm:') === 0) {
+      fetch('/api/route?target=' + encodeURIComponent(activeId), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if (!j.ok) {
+            panel.querySelector('.cv-route-empty').textContent = j.error || 'Current route unavailable.';
+            return;
+          }
+          m.route_hops = j.route_hops;
+          m.route_mode = j.route_mode;
+          m.route_path = j.route_path || [];
+          showRouteDetails(m);
+        })
+        .catch(function(){
+          var empty = panel.querySelector('.cv-route-empty');
+          if (empty) empty.textContent = 'Current route unavailable.';
+        });
+    }
+  }
+
+  function renderThread(forceBottom){
     var box = document.getElementById('cv-thread');
     if (!box) return;
     if (!activeId) { box.innerHTML='<div class="cv-empty">Select a contact to start.</div>'; return; }
     var msgs = threads[activeId] || [];
     if (!msgs.length){ box.innerHTML='<div class="cv-empty">No messages yet.</div>'; return; }
-    box.innerHTML = msgs.map(function(m){
+    var wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 48;
+    box.innerHTML = msgs.map(function(m, idx){
       var out = m.dir === 'out';
       var ackBadge = '';
+      var route = routeLabel(m);
       if (out) {
-        ackBadge = m.acked
-          ? '<span class="cv-ack cv-ack-ok" title="Delivered">✓</span>'
-          : '<span class="cv-ack cv-ack-wait" title="Sent, awaiting ACK">⌛</span>';
+        if (m.sending) {
+          ackBadge = '<span class="cv-ack cv-ack-wait" title="Waiting for radio">Sending…</span>';
+        } else if (m.failed) {
+          ackBadge = '<span class="cv-ack cv-ack-bad" title="'+esc(m.detail||'Send failed')+'">Failed</span>';
+        } else if (m.acked) {
+          ackBadge = '<button type="button" class="cv-ack cv-ack-ok cv-route-link" data-msg="'+idx+'" title="Remote ACK received. Click for route.">✓ Delivered'+(route ? ' · '+esc(route) : '')+'</button>';
+        } else {
+          ackBadge = '<button type="button" class="cv-ack cv-ack-sent cv-route-link" data-msg="'+idx+'" title="Sent. Click for route.">✓ Sent'+(route ? ' · '+esc(route) : '')+'</button>';
+        }
+      } else if (route) {
+        ackBadge = '<button type="button" class="cv-ack cv-route cv-route-link" data-msg="'+idx+'" title="Route reported by the radio. Click for details.">'+esc(route)+'</button>';
       }
       return '<div class="cv-msg '+(out?'cv-out':'cv-in')+'">' +
         '<span class="cv-who">'+(out?'you':esc(m.who))+'</span>' +
@@ -1013,7 +1695,13 @@ document.addEventListener('keydown', function (e) {
         ackBadge +
         '</div>';
     }).join('');
-    box.scrollTop = box.scrollHeight;
+    box.querySelectorAll('.cv-route-link').forEach(function(el){
+      el.addEventListener('click', function(){
+        var msg = msgs[parseInt(el.dataset.msg, 10)];
+        showRouteDetails(msg);
+      });
+    });
+    if (forceBottom || wasNearBottom) box.scrollTop = box.scrollHeight;
   }
 
   // ── send ────────────────────────────────────────────────────────────────
@@ -1030,6 +1718,12 @@ document.addEventListener('keydown', function (e) {
               : activeId;
     var raw = 'out|' + scope + '|' + text;
     _seen.add(raw);
+    if (!threads[activeId]) threads[activeId]=[];
+    var ts = new Date().toTimeString().slice(0,8);
+    var pending = {dir:'out',who:'you',text:text,at:ts,acked:false,sending:true,raw:raw};
+    threads[activeId].push(pending);
+    inp.value='';
+    renderThread(true);
     btn.disabled = true;
     getCSRF().then(function(csrf){
       return fetch('/api/send',{
@@ -1041,19 +1735,29 @@ document.addEventListener('keydown', function (e) {
       btn.disabled = false;
       if (!j.ok && j.results && j.results[0] && !j.results[0].ok) {
         _seen.delete(raw);  // let it ingest on next poll since send failed
+        pending.sending = false;
+        pending.failed = true;
+        pending.detail = j.results[0].out || 'send failed';
+        renderThread(true);
         var err = document.getElementById('cv-err');
         if (err) { err.textContent = j.results[0].out||'send failed'; setTimeout(function(){err.textContent='';},4000); }
         return;
       }
-      // add to thread with ack status from server
-      if (!threads[activeId]) threads[activeId]=[];
-      var ts = new Date().toTimeString().slice(0,8);
       var acked = j.results && j.results[0] ? !!j.results[0].acked : false;
-      threads[activeId].push({dir:'out',who:'you',text:text,at:ts,acked:acked,raw:raw});
-      inp.value='';
-      renderThread();
+      pending.sending = false;
+      pending.acked = acked;
+      if (j.results && j.results[0]) {
+        pending.route_hops = j.results[0].route_hops;
+        pending.route_mode = j.results[0].route_mode;
+        pending.route_path = j.results[0].route_path || [];
+      }
+      renderThread(true);
     }).catch(function(e){
       btn.disabled=false;
+      pending.sending = false;
+      pending.failed = true;
+      pending.detail = String(e);
+      renderThread(true);
       var err=document.getElementById('cv-err');
       if(err){err.textContent=String(e);setTimeout(function(){err.textContent='';},4000);}
     });
@@ -1071,17 +1775,21 @@ document.addEventListener('keydown', function (e) {
       '<div class="dgroup" style="margin-bottom:10px">Conversations</div>' +
       '<div id="cv-body">' +
         '<div id="cv-sidebar">' +
+          '<div id="cv-missed" class="hide"></div>' +
           '<div id="cv-list"></div>' +
           '<button type="button" id="cv-fetch" class="chip" style="margin-top:8px;width:100%">Fetch new</button>' +
         '</div>' +
         '<div id="cv-main">' +
-          '<div id="cv-hdr">Select a conversation</div>' +
-          '<div id="cv-thread"><div class="cv-empty">Select a contact to start.</div></div>' +
-          '<div id="cv-compose-row">' +
-            '<textarea id="cv-compose" placeholder="Type a reply…" rows="2"></textarea>' +
-            '<button type="button" id="cv-send">Send</button>' +
+          '<div id="cv-chat-stack">' +
+            '<div id="cv-hdr">Select a conversation</div>' +
+            '<div id="cv-thread"><div class="cv-empty">Select a contact to start.</div></div>' +
+            '<div id="cv-compose-row">' +
+              '<textarea id="cv-compose" placeholder="Type a reply…" rows="2"></textarea>' +
+              '<button type="button" id="cv-send">Send</button>' +
+            '</div>' +
+            '<div id="cv-err" style="color:var(--bad);font-size:12px;min-height:16px"></div>' +
           '</div>' +
-          '<div id="cv-err" style="color:var(--bad);font-size:12px;min-height:16px"></div>' +
+          '<aside id="cv-route-panel"></aside>' +
         '</div>' +
       '</div>';
     // mount inside #cv-anchor so it fills the flex slot
@@ -1109,10 +1817,12 @@ document.addEventListener('keydown', function (e) {
     window.__mcDest.getData = function(){ return (window.__mcDest._data||[]); };
     var origSet = window.__mcDest.setData;
     window.__mcDest.setData = function(d){
-      window.__mcDest._data = d;
+      window.__mcDest._data = d || [];
       if (origSet) origSet(d);
       renderSidebar();
-      populateRangeTarget(d);
+      if (window.__range && window.__range.populateTarget) {
+        window.__range.populateTarget(d || []);
+      }
     };
   }
 
@@ -1136,18 +1846,41 @@ document.addEventListener('keydown', function (e) {
   // styles
   var st = document.createElement('style');
   st.textContent =
-    '#cv-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}' +
-    '#cv-body{display:grid;grid-template-columns:180px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;min-height:320px}' +
-    '@media(max-width:600px){#cv-body{grid-template-columns:1fr}#cv-sidebar{border-right:none;border-bottom:1px solid var(--line)}}' +
+    '#cv-panel{height:clamp(420px,calc(100vh - 220px),620px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
+    '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:180px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
+    '@media(max-height:650px){#cv-panel{height:420px}}' +
+    '@media(max-width:600px){#cv-panel{height:calc(100vh - 190px);min-height:360px}#cv-body{grid-template-columns:1fr}#cv-sidebar{border-right:none;border-bottom:1px solid var(--line);max-height:150px}}' +
     '#cv-sidebar{background:#0c0e12;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column}' +
+    '#cv-list{min-height:0;overflow-y:auto}' +
     '.cv-row{padding:7px 8px;border-radius:5px;cursor:pointer;margin-bottom:2px}' +
     '.cv-row:hover{background:#1e222b}' +
     '.cv-row.cv-active{background:#1a2236;border-left:2px solid var(--accent)}' +
-    '.cv-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+    '.cv-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;justify-content:space-between}' +
+    '.cv-name span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
     '.cv-preview{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}' +
-    '#cv-main{display:flex;flex-direction:column}' +
+    '.cv-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:#08121f;font-size:11px;font-weight:800;line-height:1;flex:0 0 auto}' +
+    '#cv-missed{border:1px solid #ffffff1f;border-radius:6px;padding:7px;margin-bottom:8px;background:#121722;flex:0 0 auto}' +
+    '.cv-missed-title{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin-bottom:5px;font-weight:700}' +
+    '.cv-missed-row{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;color:var(--ink);border:0;border-radius:5px;padding:5px 6px;font-size:12px;text-align:left;cursor:pointer}' +
+    '.cv-missed-row:hover{background:#1e222b}' +
+    '.cv-missed-row span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '#cv-main{min-height:0;display:grid;grid-template-columns:minmax(0,1fr);overflow:hidden}' +
+    '#cv-main.route-open{grid-template-columns:minmax(0,1fr) 220px}' +
+    '@media(max-width:760px){#cv-main.route-open{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}#cv-route-panel{border-left:0;border-top:1px solid var(--line);max-height:180px}}' +
+    '#cv-chat-stack{min-height:0;display:flex;flex-direction:column;overflow:hidden}' +
+    '#cv-route-panel{display:none;min-width:0;border-left:1px solid var(--line);background:#11151d;padding:10px;overflow:auto}' +
+    '#cv-main.route-open #cv-route-panel{display:block}' +
+    '.cv-route-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}' +
+    '.cv-route-k{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);font-weight:700}' +
+    '.cv-route-title{font-size:13px;font-weight:700;margin-top:2px}' +
+    '#cv-route-close{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:5px;padding:0;width:24px;height:24px;line-height:20px;font-size:18px;flex:0 0 auto}' +
+    '.cv-hop{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;align-items:start;padding:8px 0;border-top:1px solid #ffffff12}' +
+    '.cv-hop-index{width:20px;height:20px;border-radius:999px;background:#1a3a5c;color:#c8ddff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}' +
+    '.cv-hop-name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.cv-hop-hash{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut);margin-top:2px;word-break:break-all}' +
+    '.cv-route-empty{font-size:12px;color:var(--mut);line-height:1.4}' +
     '#cv-hdr{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);padding:8px 12px;border-bottom:1px solid var(--line)}' +
-    '#cv-thread{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-height:200px}' +
+    '#cv-thread{flex:1;min-height:0;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;scrollbar-gutter:stable}' +
     '.cv-msg{display:flex;flex-direction:column;max-width:80%}' +
     '.cv-in{align-self:flex-start}' +
     '.cv-out{align-self:flex-end;align-items:flex-end}' +
@@ -1156,12 +1889,16 @@ document.addEventListener('keydown', function (e) {
     '.cv-at{font-size:10px;color:var(--mut);opacity:.6;margin-left:6px}' +
     '.cv-txt{background:#1e222b;padding:6px 10px;border-radius:12px;font-size:13px;line-height:1.4;word-break:break-word}' +
     '.cv-out .cv-txt{background:#1a3a5c;color:#c8ddff}' +
-    '.cv-ack{font-size:10px;margin-top:2px;align-self:flex-end}' +
-    '.cv-ack-ok{color:#58c07a}' +
-    '.cv-ack-wait{color:#888;opacity:.6}' +
+    '.cv-ack{font-size:10px;margin-top:3px;align-self:flex-end;line-height:1.2;background:transparent;border:0;padding:0;cursor:default;font-weight:inherit}' +
+    '.cv-route-link{cursor:pointer;text-decoration:underline;text-decoration-color:#ffffff40;text-underline-offset:2px}' +
+    '.cv-ack-ok{color:#58c07a;font-weight:650}' +
+    '.cv-ack-sent{color:#a3aab8;font-weight:650}' +
+    '.cv-ack-wait{color:#a3aab8;opacity:.85}' +
+    '.cv-ack-bad{color:#e88d7a;font-weight:650}' +
+    '.cv-route{color:#8b93a3;opacity:.8}' +
     '.cv-empty{font-size:12px;color:var(--mut);padding:20px;text-align:center}' +
-    '#cv-compose-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}' +
-    '#cv-compose{flex:1;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;resize:none}' +
+    '#cv-compose-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex:0 0 auto}' +
+    '#cv-compose{flex:1;min-height:58px;max-height:90px;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;resize:vertical}' +
     '#cv-compose:focus{outline:none;border-color:var(--accent)}' +
     '#cv-send{align-self:flex-end;padding:7px 14px}';
   document.head.appendChild(st);

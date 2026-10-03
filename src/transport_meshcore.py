@@ -82,20 +82,69 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def _add_inbox(scope: str, sender, text: str, direction: str = "in") -> None:
+def _route_hops(path_hex=None, hash_mode=None, contacts=None) -> list:
+    try:
+        size = int(hash_mode) + 1
+    except (TypeError, ValueError):
+        size = 1
+    if size <= 0:
+        size = 1
+    raw = (path_hex or "").strip()
+    if not raw:
+        return []
+
+    chunks = [raw[i:i + size * 2] for i in range(0, len(raw), size * 2)]
+    items = []
+    contact_list = list((contacts or {}).values())
+    for idx, chunk in enumerate(chunks, start=1):
+        matches = []
+        for contact in contact_list:
+            key = (contact.get("public_key") or "").lower()
+            if key.startswith(chunk.lower()):
+                name = (contact.get("adv_name") or "").strip()
+                matches.append(name or key[:8])
+        item = {"index": idx, "hash": chunk}
+        if len(matches) == 1:
+            item["name"] = matches[0]
+        elif len(matches) > 1:
+            item["name"] = " / ".join(matches[:3])
+            item["ambiguous"] = True
+        items.append(item)
+    return items
+
+
+def _route_info(path_len=None, path_hex=None, hash_mode=None, contacts=None) -> dict:
+    try:
+        hops = int(path_len)
+    except (TypeError, ValueError):
+        return {}
+    if hops == 255:
+        return {"route_hops": 0, "route_mode": "direct"}
+    if hops < 0:
+        return {"route_hops": None, "route_mode": "flood"}
+    info = {"route_hops": hops, "route_mode": "direct" if hops == 0 else "routed"}
+    route_path = _route_hops(path_hex, hash_mode, contacts)
+    if route_path:
+        info["route_path"] = route_path[:hops] if hops > 0 else []
+    return info
+
+
+def _add_inbox(scope: str, sender, text: str, direction: str = "in", **meta) -> None:
     ts = _now()
     # raw excludes timestamp so drain + subscription don't create duplicates
     raw = "%s|%s|%s|%s" % (direction, scope, sender or "", text)
     with _inbox_lock:
         if not any(m.get("raw") == raw for m in _inbox):
-            _inbox.append({
+            item = {
                 "scope": scope,
                 "sender": sender,
                 "text": text,
                 "at": ts,
                 "direction": direction,
                 "raw": raw,
-            })
+            }
+            item.update({k: v for k, v in meta.items() if v is not None})
+            _inbox.append(item)
         if len(_inbox) > 400:
             del _inbox[:-400]
 
@@ -116,7 +165,9 @@ async def _connect_async():
         text = (p.get("text") or "").strip()
         contact = mc.get_contact_by_key_prefix(pubkey) if pubkey else None
         name = (contact.get("adv_name") if contact else None) or pubkey[:8] or "unknown"
-        _add_inbox(scope=name, sender=name, text=text, direction="in")
+        _add_inbox(scope=name, sender=name, text=text, direction="in",
+                   **_route_info(p.get("path_len"), p.get("path"),
+                                 p.get("path_hash_mode"), mc.contacts))
 
     # Subscribe to live incoming channel messages
     def _on_chan(event):
@@ -127,7 +178,9 @@ async def _connect_async():
         sender = None
         if ": " in text:
             sender, text = text.split(": ", 1)
-        _add_inbox(scope=scope, sender=sender, text=text, direction="in")
+        _add_inbox(scope=scope, sender=sender, text=text, direction="in",
+                   **_route_info(p.get("path_len"), p.get("path"),
+                                 p.get("path_hash_mode"), mc.contacts))
 
     mc.subscribe(EventType.CONTACT_MSG_RECV, _on_dm)
     mc.subscribe(EventType.CHANNEL_MSG_RECV, _on_chan)
@@ -249,12 +302,33 @@ def destinations():
     # AdvType integers: NONE=0, CHAT=1, REPEATER=2, ROOM=3, SENSOR=4
     _kind_map = {2: "repeater", 3: "room"}
 
+    def _coord(value, low, high):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        if (v < low or v > high) and abs(v) > max(abs(low), abs(high)):
+            for scale in (1_000_000, 10_000_000):
+                scaled = v / scale
+                if low <= scaled <= high:
+                    v = scaled
+                    break
+        if v == 0 or v < low or v > high:
+            return None
+        return v
+
     for contact in mc.contacts.values():
         name = (contact.get("adv_name") or "").strip()
         if not name:
             continue
         kind = _kind_map.get(contact.get("type", 0), "node")
-        items.append({"id": "dm:%s" % name, "name": name, "kind": kind})
+        item = {"id": "dm:%s" % name, "name": name, "kind": kind}
+        lat = _coord(contact.get("adv_lat"), -90, 90)
+        lon = _coord(contact.get("adv_lon"), -180, 180)
+        if lat is not None and lon is not None:
+            item["lat"] = lat
+            item["lon"] = lon
+        items.append(item)
 
     if not items:
         return [], "no destinations — device may have no contacts yet"
@@ -266,6 +340,33 @@ def destinations():
             seen.add(it["id"])
             uniq.append(it)
     return uniq, None
+
+
+def route(target):
+    """Return route metadata for a destination id, based on current contacts."""
+    mc, err = _get_mc()
+    if mc is None:
+        return {"ok": False, "error": err or "not connected"}
+    if target.startswith("chan:"):
+        return {"ok": True, "target": target, "route_hops": None,
+                "route_mode": "flood", "route_path": []}
+
+    who = target.split(":", 1)[1] if ":" in target else target
+    contact = mc.get_contact_by_name(who)
+    if contact is None:
+        try:
+            contact = mc.get_contact_by_key_prefix(who)
+        except Exception:
+            contact = None
+    if contact is None:
+        return {"ok": False, "error": "contact '%s' not found" % who}
+
+    info = _route_info(contact.get("out_path_len"),
+                       contact.get("out_path"),
+                       contact.get("out_path_hash_mode"),
+                       mc.contacts)
+    info.update({"ok": True, "target": who})
+    return info
 
 
 def send(targets, text):
@@ -299,6 +400,10 @@ def send(targets, text):
                 results.append({"target": who, "ok": False, "acked": False,
                                  "out": "contact '%s' not found" % who})
                 continue
+            route = _route_info(contact.get("out_path_len"),
+                                contact.get("out_path"),
+                                contact.get("out_path_hash_mode"),
+                                mc.contacts)
             try:
                 ack_ev = _submit(
                     mc.commands.send_msg_with_retry(
@@ -316,7 +421,8 @@ def send(targets, text):
                 out = "ACK received" if acked else "sent (no ACK)"
             except Exception as e:
                 ok, acked, out = False, False, "send error: %s" % e
-            results.append({"target": who, "ok": ok, "acked": acked, "out": out})
+            results.append({"target": who, "ok": ok, "acked": acked, "out": out,
+                            **route})
     return results
 
 
@@ -375,7 +481,9 @@ async def _drain_queue_async(mc) -> None:
                 name = (contact.get("adv_name") if contact else None) or pubkey[:8] or "unknown"
             except Exception:
                 name = pubkey[:8] or "unknown"
-            _add_inbox(scope=name, sender=name, text=text, direction="in")
+            _add_inbox(scope=name, sender=name, text=text, direction="in",
+                       **_route_info(p.get("path_len"), p.get("path"),
+                                     p.get("path_hash_mode"), mc.contacts))
         elif ev.type == EventType.CHANNEL_MSG_RECV:
             idx = p.get("channel_idx", 0)
             text = (p.get("text") or "").strip()
@@ -383,7 +491,9 @@ async def _drain_queue_async(mc) -> None:
             sender = None
             if ": " in text:
                 sender, text = text.split(": ", 1)
-            _add_inbox(scope=scope, sender=sender, text=text, direction="in")
+            _add_inbox(scope=scope, sender=sender, text=text, direction="in",
+                       **_route_info(p.get("path_len"), p.get("path"),
+                                     p.get("path_hash_mode"), mc.contacts))
         else:
             log.debug("drain: unexpected event type %s", ev.type)
         await asyncio.sleep(0.05)

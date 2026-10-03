@@ -1,8 +1,8 @@
 # MeshCore on a Mac mini over BLE — progress, ground truth, and rebuild guide
 
-**Status:** working end to end for sending and receiving. Remaining work is §8; read §9
-and §11 before promising anything.
-**Last updated:** 2026-10-03 (after the inbox, roles, adverts and UI-grouping work)
+**Status:** working end to end for sending, receiving, repeater mapping and range testing.
+Remaining work is §8; read §9 and §11 before promising anything.
+**Last updated:** 2026-10-03 (after multi-target range test, repeater map and app-bundle work)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
 
 This file is the handoff. It records what works, what is broken, and the facts that took
@@ -135,7 +135,7 @@ this is deliberately a text parse — verified against 18 of 18 real lines.
 
 ```
 src/server.py               stdlib-only HTTP server (no pip install needed)
-src/transport_meshcore.py   CLI wrapper, parsers, roles, auto-recovery, dedupe, inbox
+src/transport_meshcore.py   SDK transport, roles, routes, repeater coordinates, inbox
 public/index.html           shell + client app -- ALL JS IS INLINED HERE
 public/destinations.js      source of the inlined block; NOT loaded (dead file)
 data/config.json            non-secret config            (gitignored)
@@ -166,6 +166,11 @@ POST /api/setup           {passphrase} >= 8 chars, first run only
 POST /api/login           {passphrase} -> httpOnly cookie ms_session + CSRF
 POST /api/send            {text, targets}                             (session + CSRF)
 POST /api/advert          {mode: "flood"|"zero"}                      (session + CSRF)
+GET  /api/route           ?target=dm:<name>|chan:<n> route metadata   (session)
+POST /api/range/start     {targets:[...], prefix, interval}           (session + CSRF)
+GET  /api/range/status    live totals, per-target stats, next_due_at  (session)
+POST /api/range/targets   update targets while running                (session + CSRF)
+POST /api/range/stop      stop active range test                      (session + CSRF)
 ```
 Targets are `chan:<index>` or `dm:<name>`. Session = cookie `ms_session` (12h). CSRF is
 the `X-CSRF-Token` header compared against the session record.
@@ -178,8 +183,10 @@ user and must never be reset by an agent.** To deliberately return to first run,
 
 ## 5. How the pieces work now
 
-**Dedupe.** The device can report the same channel twice per connection. Items are deduped
-by id and tagged: `public`, `private`, `node`, `repeater`, `room`.
+**Dedupe and destination metadata.** The device can report the same channel twice per
+connection. Items are deduped by id and tagged: `public`, `private`, `node`, `repeater`,
+`room`. Contacts with advertised GPS include `lat`/`lon`, accepting both decimal degrees
+and common scaled integer forms.
 
 **Role classification.** `_contact_roles()` reads the TYPE column into a name→role map;
 `_stamp_roles()` applies it. VERIFIED: 54 roles → `{node: 8, repeater: 44, room: 2}`.
@@ -204,11 +211,31 @@ into a thread per person), newest first, one line per message, and records your 
 into the same thread as `you`.
 
 **UI.** Sections Nodes / Repeaters / Rooms / Channels in a 2-column grid with filter chips
-(All/Nodes/Repeaters/Rooms/Channels, remembered in localStorage); a Favourites section
-pinned above them (★ per row); role badges; resizable message box; five message templates
-(`RT (time)` stamps the clock at click time); Enter submits the passphrase; Flood advert +
-Advert (0-hop) beside Refresh. The old `dm:Name` label is gone — the id survives only in
-the invisible checkbox value, which is what makes Send work.
+(All/Nodes/Repeaters/Rooms/Channels, remembered in localStorage), search by name/id/type,
+a Favourites section pinned above them (★ per row), role badges, resizable message box,
+five message templates (`RT (time)` stamps the clock at click time), Enter submits the
+passphrase, Flood advert + Advert (0-hop) beside Refresh. The old `dm:Name` label is gone
+— the id survives only in the invisible checkbox value, which is what makes Send work.
+
+**Conversation panel.** Chat is bounded-height and scrolls internally, so long histories
+do not stretch the page forever. Outgoing messages appear optimistically with sending/sent/
+delivered/failure states. Sent route labels show hop count when known and open a right-side
+route inspector; saved messages can query `/api/route` for current hop details. The
+conversation sidebar tracks unread inbound messages in localStorage and shows a missed
+section/badges.
+
+**Repeater map.** A **Repeater map** drawer shows only repeaters with usable advertised
+GPS. It renders OpenStreetMap tiles locally in the browser, supports plus/minus and
+mouse-wheel zoom, click-drag panning, selected repeater popups, row/marker selection sync,
+and an "Open full map" link. It is not a routing map; it visualizes advertised repeater
+locations.
+
+**Range test.** The range test drawer supports selecting one or more nodes/channels,
+searching/filtering targets, and changing the active target list while the test is running
+(`/api/range/targets`). Each interval cycle sends to the current target list. Direct
+messages use ACKs as delivery proof; channels are logged as broadcasts with no ACK
+expected. The UI shows total sent/acked %, per-target sent/acked/missed stats in a right
+panel, a next-ping countdown bar, a live collapsed header summary and a rolling log.
 
 ---
 
@@ -222,6 +249,8 @@ the invisible checkbox value, which is what makes Send work.
 | **Receive** | `sync_msgs` → 18 real messages; `OptimusPrime Hi` pulled off the radio on demand |
 | Inbox parser | 18 of 18 real lines, senders and emoji intact |
 | Inbox store | `data/inbox.json` served instantly; UI shows it with timestamps |
+| Multi-target range test | user screenshots confirmed running totals, ACK counts, countdown and live collapsed header |
+| Repeater map | user screenshots confirmed OSM tiles, selectable repeaters, pan/zoom and popups |
 | Advert route | `/api/advert` → 401 without a session (registered + gated) |
 | Auto-recovery | empty table → `['floodadv','reload_contacts']` → contacts recovered; cooldown blocks repeats |
 | Layout | `gridColumns: '633px 633px'` (2 columns); `starVisible: True` |
@@ -235,7 +264,8 @@ the invisible checkbox value, which is what makes Send work.
 
 ## 7. Known defects / rough edges
 
-1. **The signed-in view is UNVERIFIED by the agent** — see §9. Biggest risk in this file.
+1. **The signed-in view is mostly screenshot/user-verified, not agent-verified** — see §9.
+   Biggest remaining process risk in this file.
 2. **`zerohop` is broken on this firmware**, so the "Advert (0-hop)" button always reports
    a failure. It surfaces the device's error rather than faking success; remove it if a
    dead button is worse than the honesty.
@@ -251,12 +281,6 @@ the invisible checkbox value, which is what makes Send work.
 ---
 
 ## 8. Requested, designed, NOT built
-
-**Range test** — interval (default 15s), message prefix (default `RT`), Start/Stop,
-per-target ack counters, rolling log. Each tick runs
-`msg <contact> "<prefix> <time>" wait_ack`; **the ack is the delivery datum** — the thing
-a shell loop can never prove. Routes `/api/range/start|stop|status`. The templates are
-already the front half of this.
 
 **Add contact** — a card taking **either** a contact URI (QR scanned on the phone) **or** a
 public key, plus a name; and a per-contact "show URI". Maps to `import_contact` /
