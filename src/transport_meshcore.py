@@ -277,6 +277,12 @@ def send(targets, text):
             who = t.split(":", 1)[1] if ":" in t else t
             contact = mc.get_contact_by_name(who)
             if contact is None:
+                # Might be a pubkey prefix stored as scope by old CLI transport
+                try:
+                    contact = mc.get_contact_by_key_prefix(who)
+                except Exception:
+                    contact = None
+            if contact is None:
                 results.append({"target": who, "ok": False, "acked": False,
                                  "out": "contact '%s' not found" % who})
                 continue
