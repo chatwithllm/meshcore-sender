@@ -391,7 +391,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(403, {"error": "bad csrf token"})
                 return
             target = (body.get("target") or "").strip()
-            prefix = (body.get("prefix") or "ping").strip()[:40]
+            prefix = (body.get("prefix") or "ping").strip()
             try:
                 interval = max(5, min(300, int(body.get("interval") or 30)))
             except (ValueError, TypeError):
@@ -399,6 +399,9 @@ class Handler(BaseHTTPRequestHandler):
             import re as _re
             if not _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) or target.startswith("-"):
                 self._json(400, {"error": "invalid target name"})
+                return
+            if not _re.fullmatch(r"[A-Za-z0-9_./#@-]{1,40}", prefix) or prefix.startswith("-"):
+                self._json(400, {"error": "invalid prefix"})
                 return
             with _range_lock:
                 if _range["running"]:
