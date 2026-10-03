@@ -53,7 +53,6 @@ _RANGE_LOG_MAX = 200
 def _range_loop(target, prefix, interval):
     """Background thread: send one DM per tick, record ACK."""
     import transport_meshcore as mc
-    mc._run(["reload_contacts"], timeout=40)
     seq = 0
     while True:
         with _range_lock:
@@ -137,18 +136,8 @@ def _auth_check(passphrase):
 
 # -------------------------------------------------------------------- radio io
 def cli(args, timeout=TIMEOUT):
-    """Delegate to the MeshCore transport (see src/transport_meshcore.py).
-
-    Kept as a thin shim so the route handlers below do not care which firmware
-    the radio is running. MeshCore, not Meshtastic: the Heltec on this desk
-    speaks MeshCore, and the two are not interchangeable.
-    """
-    import transport_meshcore as mc
-    old = mc.ADDR
-    try:
-        return mc._run(args, timeout=timeout)
-    finally:
-        mc.ADDR = old
+    """Kept for reference; the CLI subprocess approach is superseded by the SDK transport."""
+    raise NotImplementedError("CLI transport removed; use transport_meshcore SDK functions directly")
 
 
 def radio_nodes(force=False):
