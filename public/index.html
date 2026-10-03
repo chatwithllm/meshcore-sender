@@ -701,6 +701,8 @@ document.addEventListener('keydown', function (e) {
     inbox.parentElement.appendChild(card);
     document.getElementById('rt-start').onclick = rangeStart;
     document.getElementById('rt-stop').onclick = rangeStop;
+    // populate now in case destinations already loaded before card existed
+    populateRangeTarget(window.__mcDest && window.__mcDest.getData ? window.__mcDest.getData() : []);
   }
 
   function rtLogEntry(e){
