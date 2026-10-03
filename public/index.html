@@ -867,7 +867,7 @@ document.addEventListener('keydown', function (e) {
   function ingest(msgs, direction){
     var changed = false;
     (msgs||[]).forEach(function(m){
-      var key = m.raw || (m.scope+'|'+m.sender+'|'+m.text);
+      var key = m.raw || ((direction||'in')+'|'+m.scope+'|'+m.sender+'|'+m.text);
       if (_seen.has(key)) return;
       _seen.add(key);
       // scope → thread id
@@ -1063,23 +1063,7 @@ document.addEventListener('keydown', function (e) {
        .then(function(j){ var changed=ingest(j.messages,'in'); if(changed){renderSidebar();renderThread();} })
        .catch(function(){});
     }
-    if (us.indexOf('/api/send') >= 0 && opts && opts.method === 'POST') {
-      try {
-        var body = JSON.parse(opts.body||'{}');
-        if (body.text && body.targets) {
-          p.then(function(r){ return r.clone().json(); })
-           .then(function(j){
-             if (!j.ok) return;
-             var ts = new Date().toTimeString().slice(0,8);
-             (body.targets||[]).forEach(function(tid){
-               if (!threads[tid]) threads[tid]=[];
-               threads[tid].push({dir:'out',who:'you',text:body.text,at:ts});
-             });
-             renderThread();
-           }).catch(function(){});
-        }
-      } catch(e){}
-    }
+    // /api/send: do NOT intercept here — sendReply() already does optimistic add
     return p;
   };
 
