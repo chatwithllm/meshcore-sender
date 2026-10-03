@@ -50,7 +50,8 @@ def _run(args, timeout=None):
         # meshcore-cli exits 0 even when it never found the device, so the exit
         # code alone is not a success signal. Without this, a failed scan reads
         # as "ran fine, nothing to parse" and the UI blames the wrong thing.
-        for marker in ("Couldn't find device", "Can't connect", "No response from"):
+        for marker in ("Couldn't find device", "Can't connect", "No response from",
+                        "Unknown destination"):
             if marker in out:
                 return False, out
         return (p.returncode == 0), out
@@ -182,7 +183,7 @@ def send(targets, text):
             label = "channel %s" % idx
         else:
             who = t.split(":", 1)[1] if ":" in t else t
-            ok, out = _run(["msg", who, text, "wait_ack"], timeout=TIMEOUT)
+            ok, out = _run(["msg", who, text], timeout=TIMEOUT)
             label = who
         detail = " ".join(_clean(out))[-300:]
         results.append({"target": label, "ok": ok, "out": detail})
@@ -198,8 +199,7 @@ def send_one_ack(contact_name, text, timeout=None):
     """
     import time as _time
     t0 = _time.monotonic()
-    ok, out = _run(["msg", contact_name, text, "wait_ack"],
-                   timeout=timeout or TIMEOUT)
+    ok, out = _run(["msg", contact_name, text], timeout=timeout or TIMEOUT)
     rtt = round((_time.monotonic() - t0) * 1000)
     detail = " ".join(_clean(out))[-300:]
     return ok, rtt, detail

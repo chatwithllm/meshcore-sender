@@ -705,6 +705,13 @@ document.addEventListener('keydown', function (e) {
       .catch(function(){});
   }
 
+  window.__range = {
+    start: rangeStart,
+    stop: rangeStop,
+    poll: rangePollStatus,
+    updateUI: rtUpdateUI,
+  };
+
   setTimeout(addRangeTest, 800);
   document.addEventListener('click', function(){ setTimeout(addRangeTest, 800); }, true);
 

@@ -53,6 +53,7 @@ _RANGE_LOG_MAX = 200
 def _range_loop(target, prefix, interval):
     """Background thread: send one DM per tick, record ACK."""
     import transport_meshcore as mc
+    mc._run(["reload_contacts"], timeout=40)
     seq = 0
     while True:
         with _range_lock:
@@ -408,7 +409,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(409, {"error": "range test already running"})
                     return
                 _range.update({"running": True, "target": target, "prefix": prefix,
-                                "interval": interval, "sent": 0, "acked": 0, "log": []})
+                                "interval": interval, "sent": 0, "acked": 0, "log": [],
+                                "_init_note": "reloading contacts before first ping"})
                 t = threading.Thread(target=_range_loop, args=(target, prefix, interval),
                                      daemon=True)
                 _range["thread"] = t
