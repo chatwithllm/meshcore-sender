@@ -522,8 +522,10 @@ document.addEventListener('keydown', function (e) {
       .then(function(sess){
         if (!sess || !sess.authed) return null;          // signed out: stay quiet
         var url = window.__inboxFetch ? '/api/messages/fetch' : '/api/messages';
-        return fetch(url, {credentials:'same-origin',
-                           headers:{'X-CSRF-Token': sess.csrf || ''}})
+        var fetchOpts = {credentials:'same-origin',
+                         headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''}};
+        if (window.__inboxFetch) fetchOpts.method = 'POST';
+        return fetch(url, fetchOpts)
           .then(function(r){ return r.json(); });
       })
       .then(function(j){
@@ -588,6 +590,123 @@ document.addEventListener('keydown', function (e) {
       });
     setTimeout(inboxRender, 60);
   }, true);
+
+  // ---- RANGE TEST -----------------------------------------------------------
+  var _rangeRunning = false;
+  var _rangePoll = null;
+
+  function addRangeTest(){
+    if (document.getElementById('range-card')) return;
+    var inbox = document.getElementById('inbox');
+    if (!inbox) return;
+    var card = document.createElement('div');
+    card.className = 'card'; card.id = 'range-card';
+    card.innerHTML =
+      '<div class="dgroup" style="margin-bottom:8px">Range test</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">' +
+        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Target contact</label>' +
+          '<input id="rt-target" type="text" placeholder="e.g. OptimusPrime" style="width:100%"></div>' +
+        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
+          '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
+        '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
+          '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%"></div>' +
+      '</div>' +
+      '<div class="row" style="margin-bottom:10px">' +
+        '<button id="rt-start">Start</button>' +
+        '<button id="rt-stop" class="ghost" disabled>Stop</button>' +
+        '<span id="rt-stats" style="font-size:12px;color:var(--mut);margin-left:auto"></span>' +
+      '</div>' +
+      '<div id="rt-log" style="font:12px ui-monospace,SFMono-Regular,Menlo,monospace;' +
+           'max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;padding:6px">' +
+        '<div style="opacity:.4">No pings yet.</div>' +
+      '</div>';
+    inbox.parentElement.appendChild(card);
+    document.getElementById('rt-start').onclick = rangeStart;
+    document.getElementById('rt-stop').onclick = rangeStop;
+  }
+
+  function rtLogEntry(e){
+    var col = e.acked ? '#58c07a' : '#e88d7a';
+    return '<div style="padding:2px 0;border-bottom:1px solid #ffffff10">' +
+      '<span style="color:#8fb8d8">' + esc(e.ts) + '</span> ' +
+      '<span style="color:' + col + '">' + (e.acked ? '✓' : '✗') + '</span> ' +
+      '#' + e.seq +
+      (e.acked ? ' <span style="opacity:.55">' + e.rtt_ms + 'ms</span>' : '') +
+      (e.acked ? '' : ' <span style="opacity:.4;font-size:10px">' + esc((e.detail||'').slice(0,60)) + '</span>') +
+      '</div>';
+  }
+
+  function rtUpdateUI(s){
+    _rangeRunning = s.running;
+    var startBtn = document.getElementById('rt-start');
+    var stopBtn  = document.getElementById('rt-stop');
+    if (!startBtn) return;
+    startBtn.disabled = s.running;
+    stopBtn.disabled  = !s.running;
+    var pct = s.sent ? Math.round(s.acked / s.sent * 100) : 0;
+    var stats = document.getElementById('rt-stats');
+    if (s.sent) {
+      stats.textContent = s.sent + ' sent · ' + s.acked + ' acked · ' + pct + '%';
+      stats.style.color = pct >= 80 ? '#58c07a' : pct >= 50 ? '#e8c44a' : '#e88d7a';
+    } else if (s.running) {
+      stats.textContent = 'waiting for first ping…';
+      stats.style.color = 'var(--mut)';
+    } else {
+      stats.textContent = '';
+    }
+    var log = document.getElementById('rt-log');
+    if (log && s.log && s.log.length) {
+      log.innerHTML = [...s.log].reverse().slice(0, 60).map(rtLogEntry).join('');
+    }
+    if (s.running && !_rangePoll) {
+      _rangePoll = setInterval(rangePollStatus, 3000);
+    } else if (!s.running && _rangePoll) {
+      clearInterval(_rangePoll); _rangePoll = null;
+    }
+  }
+
+  function rangePollStatus(){
+    fetch('/api/range/status', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(s){ rtUpdateUI(s); })
+      .catch(function(){});
+  }
+
+  function rangeStart(){
+    var target   = (document.getElementById('rt-target').value || '').trim();
+    var prefix   = (document.getElementById('rt-prefix').value || 'ping').trim();
+    var interval = parseInt(document.getElementById('rt-interval').value, 10) || 30;
+    if (!target) { alert('Enter a target contact name.'); return; }
+    fetch('/api/session', {credentials:'same-origin'}).then(function(r){ return r.json(); })
+      .then(function(sess){
+        return fetch('/api/range/start', {method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''},
+          body: JSON.stringify({target: target, prefix: prefix, interval: interval})});
+      }).then(function(r){ return r.json(); })
+      .then(function(j){
+        if (!j.ok) { alert('Failed to start: ' + (j.error || 'unknown')); return; }
+        var log = document.getElementById('rt-log');
+        if (log) log.innerHTML = '<div style="opacity:.4">Started. First ping in ~5s…</div>';
+        var stats = document.getElementById('rt-stats');
+        if (stats) { stats.textContent = ''; stats.style.color = 'var(--mut)'; }
+        rtUpdateUI({running:true, target:target, prefix:prefix, interval:interval,
+                    sent:0, acked:0, log:[]});
+      }).catch(function(e){ alert('Error: ' + e); });
+  }
+
+  function rangeStop(){
+    fetch('/api/session', {credentials:'same-origin'}).then(function(r){ return r.json(); })
+      .then(function(sess){
+        return fetch('/api/range/stop', {method:'POST', credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''},
+          body: JSON.stringify({})});
+      }).then(function(r){ return r.json(); })
+      .then(function(){ rangePollStatus(); })
+      .catch(function(){});
+  }
+
+  setTimeout(addRangeTest, 800);
+  document.addEventListener('click', function(){ setTimeout(addRangeTest, 800); }, true);
 
   // debug hook, used by the automated check
   window.__mcDest = { render: render, setData: function(d){ DATA = d; render(); },

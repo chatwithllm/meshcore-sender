@@ -35,6 +35,50 @@ _lock = threading.Lock()
 _nodes_cache = {"nodes": [], "at": 0, "error": None}
 _load_ok = False        # see _load_config: refuse to save before load
 
+# ---- range-test state -------------------------------------------------------
+_range = {
+    "running": False,
+    "target": None,
+    "prefix": "ping",
+    "interval": 30,
+    "sent": 0,
+    "acked": 0,
+    "log": [],          # list of {"seq":N,"ts":"HH:MM:SS","acked":bool,"rtt_ms":N,"detail":str}
+    "thread": None,
+}
+_range_lock = threading.Lock()
+_RANGE_LOG_MAX = 200
+
+
+def _range_loop(target, prefix, interval):
+    """Background thread: send one DM per tick, record ACK."""
+    import transport_meshcore as mc
+    seq = 0
+    while True:
+        with _range_lock:
+            if not _range["running"]:
+                break
+        seq += 1
+        ts = time.strftime("%H:%M:%S")
+        text = "%s %d [%s]" % (prefix, seq, ts)
+        ok, rtt, detail = mc.send_one_ack(target, text, timeout=45)
+        entry = {"seq": seq, "ts": ts, "acked": ok, "rtt_ms": rtt, "detail": detail}
+        with _range_lock:
+            _range["sent"] += 1
+            if ok:
+                _range["acked"] += 1
+            _range["log"].append(entry)
+            if len(_range["log"]) > _RANGE_LOG_MAX:
+                _range["log"] = _range["log"][-_RANGE_LOG_MAX:]
+            if not _range["running"]:
+                break
+        # sleep interval in 1s increments so stop is responsive
+        for _ in range(interval):
+            time.sleep(1)
+            with _range_lock:
+                if not _range["running"]:
+                    return
+
 
 # ---------------------------------------------------------------- config store
 def _load_config():
@@ -211,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                              "radio_partial": bool(info.get("error")) and _reachable,
                              "radio_error": info["error"],
                              "nodes": len(info["nodes"])})
-        elif path in ("/api/messages", "/api/messages/fetch"):
+        elif path == "/api/messages":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
                 return
@@ -219,30 +263,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(401, {"error": "unauthorized"})
                 return
             import json as _json, os as _os
-            # DATA_DIR is not in scope in this handler (NameError shipped once)
             _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
                                "data", "inbox.json")
             try:
                 _store = _json.load(open(_p))
             except Exception:
                 _store = []
-            if path.endswith("/fetch"):
-                from transport_meshcore import messages as _msgs
-                _new, _e = _msgs()
-                _seen = set(x.get("raw") or x.get("text") for x in _store)
-                for _m in _new:
-                    if (_m.get("raw") or _m.get("text")) not in _seen:
-                        _m["at"] = _now()
-                        _store.append(_m)
-                _store = _store[-300:]
-                try:
-                    _os.makedirs(DATA_DIR, exist_ok=True)
-                    _json.dump(_store, open(_p, "w"))
-                except Exception:
-                    pass
-                self._json(200, {"messages": _store, "fetched": len(_new),
-                                 "error": _e})
-                return
             self._json(200, {"messages": _store, "error": None})
         elif path == "/api/advert":
             if not _auth_set():
@@ -261,6 +287,17 @@ class Handler(BaseHTTPRequestHandler):
             _out = (_p.stdout + _p.stderr).strip()
             self._json(200, {"ok": "Advert sent" in _out, "mode": mode,
                              "detail": _out[-200:]})
+        elif path == "/api/range/status":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured", "setup": "/setup"})
+                return
+            if not self._session():
+                self._json(401, {"error": "unauthorized"})
+                return
+            with _range_lock:
+                snap = {k: _range[k] for k in
+                        ("running", "target", "prefix", "interval", "sent", "acked", "log")}
+            self._json(200, snap)
         elif path == "/api/nodes":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
@@ -310,6 +347,84 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+        elif path == "/api/messages/fetch":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            import json as _json, os as _os
+            _p = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                               "data", "inbox.json")
+            try:
+                _store = _json.load(open(_p))
+            except Exception:
+                _store = []
+            from transport_meshcore import messages as _msgs
+            _new, _e = _msgs()
+            _seen = set(x.get("raw") or x.get("text") for x in _store)
+            for _m in _new:
+                if (_m.get("raw") or _m.get("text")) not in _seen:
+                    _m["at"] = _now()
+                    _store.append(_m)
+            _store = _store[-300:]
+            try:
+                _os.makedirs(os.path.dirname(_p), exist_ok=True)
+                _json.dump(_store, open(_p, "w"))
+            except Exception:
+                pass
+            self._json(200, {"messages": _store, "fetched": len(_new), "error": _e})
+        elif path == "/api/range/start":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            target = (body.get("target") or "").strip()
+            prefix = (body.get("prefix") or "ping").strip()[:40]
+            try:
+                interval = max(5, min(300, int(body.get("interval") or 30)))
+            except (ValueError, TypeError):
+                interval = 30
+            import re as _re
+            if not _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) or target.startswith("-"):
+                self._json(400, {"error": "invalid target name"})
+                return
+            with _range_lock:
+                if _range["running"]:
+                    self._json(409, {"error": "range test already running"})
+                    return
+                _range.update({"running": True, "target": target, "prefix": prefix,
+                                "interval": interval, "sent": 0, "acked": 0, "log": []})
+                t = threading.Thread(target=_range_loop, args=(target, prefix, interval),
+                                     daemon=True)
+                _range["thread"] = t
+            t.start()
+            self._json(200, {"ok": True, "target": target, "interval": interval})
+        elif path == "/api/range/stop":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            with _range_lock:
+                _range["running"] = False
+            self._json(200, {"ok": True})
         elif path == "/api/send":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})
@@ -332,9 +447,15 @@ class Handler(BaseHTTPRequestHandler):
             if not targets:
                 self._json(400, {"error": "pick a destination"})
                 return
+            import re as _re
             for t in targets:                                # validate at the boundary
-                # MeshCore ids: "chan:<index>" or "dm:<contact name>"
-                if not (t.startswith("chan:") or t.startswith("dm:")):
+                # MeshCore ids: "chan:<digit>" or "dm:<safe name>"
+                # Reject anything starting with '-' to prevent flag injection.
+                if _re.fullmatch(r"chan:\d+", t):
+                    pass
+                elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", t) and not t[3:].startswith("-"):
+                    pass
+                else:
                     self._json(400, {"error": "bad destination: %s" % t})
                     return
             results = send(targets, text)

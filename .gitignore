@@ -1,0 +1,7 @@
+data/auth.json
+data/inbox.json
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+/tmp/meshcore-sender.log

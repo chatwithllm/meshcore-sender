@@ -186,8 +186,23 @@ def send(targets, text):
             label = who
         detail = " ".join(_clean(out))[-300:]
         results.append({"target": label, "ok": ok, "out": detail})
-        time_sleep = None
     return results
+
+
+def send_one_ack(contact_name, text, timeout=None):
+    """Send a single DM with wait_ack. Returns (acked, rtt_ms, detail_str).
+
+    Used by the range-test loop where the ACK — not the send exit code — is
+    the delivery datum. A non-zero rtt means the message reached the target
+    and a reply was heard on the mesh.
+    """
+    import time as _time
+    t0 = _time.monotonic()
+    ok, out = _run(["msg", contact_name, text, "wait_ack"],
+                   timeout=timeout or TIMEOUT)
+    rtt = round((_time.monotonic() - t0) * 1000)
+    detail = " ".join(_clean(out))[-300:]
+    return ok, rtt, detail
 
 
 # --- auto-recovery ---------------------------------------------------------
