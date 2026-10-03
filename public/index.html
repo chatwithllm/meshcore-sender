@@ -659,6 +659,20 @@ document.addEventListener('keydown', function (e) {
   var _rangeRunning = false;
   var _rangePoll = null;
 
+  function populateRangeTarget(data){
+    var sel = document.getElementById('rt-target');
+    if (!sel) return;
+    var prev = sel.value;
+    // Only DM contacts (not channels) make sense for range test
+    var contacts = (data || []).filter(function(d){ return d.id && d.id.startsWith('dm:'); });
+    sel.innerHTML = '<option value="">— pick contact —</option>' +
+      contacts.map(function(d){
+        return '<option value="' + esc(d.name) + '"' +
+               (d.name === prev ? ' selected' : '') + '>' +
+               esc(d.name) + '</option>';
+      }).join('');
+  }
+
   function addRangeTest(){
     if (document.getElementById('range-card')) return;
     var inbox = document.getElementById('inbox');
@@ -669,7 +683,7 @@ document.addEventListener('keydown', function (e) {
       '<div class="dgroup" style="margin-bottom:8px">Range test</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">' +
         '<div><label style="font-size:11px;display:block;margin-bottom:4px">Target contact</label>' +
-          '<input id="rt-target" type="text" placeholder="e.g. OptimusPrime" style="width:100%"></div>' +
+          '<select id="rt-target" style="width:100%"><option value="">— pick contact —</option></select></div>' +
         '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
           '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
         '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
@@ -740,7 +754,7 @@ document.addEventListener('keydown', function (e) {
     var target   = (document.getElementById('rt-target').value || '').trim();
     var prefix   = (document.getElementById('rt-prefix').value || 'ping').trim();
     var interval = parseInt(document.getElementById('rt-interval').value, 10) || 30;
-    if (!target) { alert('Enter a target contact name.'); return; }
+    if (!target) { alert('Pick a target contact.'); return; }
     fetch('/api/session', {credentials:'same-origin'}).then(function(r){ return r.json(); })
       .then(function(sess){
         return fetch('/api/range/start', {method:'POST', credentials:'same-origin',
@@ -1066,6 +1080,7 @@ document.addEventListener('keydown', function (e) {
       window.__mcDest._data = d;
       if (origSet) origSet(d);
       renderSidebar();
+      populateRangeTarget(d);
     };
   }
 
