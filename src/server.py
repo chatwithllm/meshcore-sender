@@ -465,6 +465,29 @@ class Handler(BaseHTTPRequestHandler):
                     return
             results = send(targets, text)
             ok = all(r["ok"] for r in results)
+            # persist sent messages so they survive a page reload
+            if ok:
+                import json as _json, os as _os
+                _p = _os.path.join(ROOT, "data", "inbox.json")
+                try:
+                    _store = _json.load(open(_p))
+                except Exception:
+                    _store = []
+                ts = _now()
+                for t in targets:
+                    scope = ("public" if t == "chan:0"
+                             else "chan%s" % t.split(":",1)[1] if t.startswith("chan:")
+                             else t.split(":",1)[1] if ":" in t else t)
+                    raw = "out|%s|%s|%s" % (scope, text, ts)
+                    if not any(m.get("raw") == raw for m in _store):
+                        _store.append({"scope": scope, "sender": None, "text": text,
+                                       "at": ts, "direction": "out", "raw": raw})
+                _store = _store[-300:]
+                try:
+                    _os.makedirs(os.path.dirname(_p), exist_ok=True)
+                    _json.dump(_store, open(_p, "w"))
+                except Exception:
+                    pass
             self._json(200 if ok else 502,
                        {"ok": ok, "results": results,
                         "hint": None if ok else "check the radio is powered and not "

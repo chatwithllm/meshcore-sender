@@ -867,7 +867,8 @@ document.addEventListener('keydown', function (e) {
   function ingest(msgs, direction){
     var changed = false;
     (msgs||[]).forEach(function(m){
-      var key = m.raw || ((direction||'in')+'|'+m.scope+'|'+m.sender+'|'+m.text);
+      var dir = m.direction || direction || 'in';
+      var key = m.raw || (dir+'|'+m.scope+'|'+m.sender+'|'+m.text);
       if (_seen.has(key)) return;
       _seen.add(key);
       // scope → thread id
@@ -876,8 +877,8 @@ document.addEventListener('keydown', function (e) {
                 ? 'chan:0' : 'dm:' + (m.scope||'').trim();
       if (!threads[tid]) threads[tid] = [];
       threads[tid].push({
-        dir: direction||'in',
-        who: m.sender || (direction==='out' ? 'you' : m.scope),
+        dir: dir,
+        who: m.sender || (dir==='out' ? 'you' : m.scope),
         text: m.text||'',
         at: m.at || new Date().toTimeString().slice(0,8)
       });
