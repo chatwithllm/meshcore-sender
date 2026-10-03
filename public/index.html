@@ -995,6 +995,13 @@ document.addEventListener('keydown', function (e) {
     if (!inp || !activeId) return;
     var text = inp.value.trim();
     if (!text) return;
+    // Register raw key NOW so polls during the ACK wait (~12s) don't add the
+    // message from inbox.json before .then() fires and we'd get a duplicate.
+    var scope = activeId.startsWith('dm:') ? activeId.slice(3)
+              : activeId.startsWith('chan:') ? (activeId === 'chan:0' ? 'public' : activeId.replace(':',''))
+              : activeId;
+    var raw = 'out|' + scope + '|' + text;
+    _seen.add(raw);
     btn.disabled = true;
     getCSRF().then(function(csrf){
       return fetch('/api/send',{
@@ -1005,6 +1012,7 @@ document.addEventListener('keydown', function (e) {
     }).then(function(j){
       btn.disabled = false;
       if (!j.ok && j.results && j.results[0] && !j.results[0].ok) {
+        _seen.delete(raw);  // let it ingest on next poll since send failed
         var err = document.getElementById('cv-err');
         if (err) { err.textContent = j.results[0].out||'send failed'; setTimeout(function(){err.textContent='';},4000); }
         return;
@@ -1013,12 +1021,6 @@ document.addEventListener('keydown', function (e) {
       if (!threads[activeId]) threads[activeId]=[];
       var ts = new Date().toTimeString().slice(0,8);
       var acked = j.results && j.results[0] ? !!j.results[0].acked : false;
-      // Pre-register the raw key so ingest() skips the echoed message from next poll
-      var scope = activeId.startsWith('dm:') ? activeId.slice(3)
-                : activeId.startsWith('chan:') ? (activeId === 'chan:0' ? 'public' : activeId.replace(':',''))
-                : activeId;
-      var raw = 'out|' + scope + '|' + text;
-      _seen.add(raw);
       threads[activeId].push({dir:'out',who:'you',text:text,at:ts,acked:acked,raw:raw});
       inp.value='';
       renderThread();
