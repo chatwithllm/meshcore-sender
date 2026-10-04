@@ -52,6 +52,81 @@ _range = {
 _range_lock = threading.Lock()
 _RANGE_LOG_MAX = 200
 
+_cmd_lock = threading.Lock()
+_commands = {
+    "pending": None,
+    "history": [],
+}
+_CMD_HISTORY_MAX = 80
+
+
+def _validate_range_targets(target_inputs):
+    import re as _re
+    targets = []
+    for target in target_inputs:
+        target = str(target or "").strip()
+        if _re.fullmatch(r"chan:\d+", target):
+            pass
+        elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target) and not target[3:].startswith("-"):
+            pass
+        elif _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) and not target.startswith("-"):
+            target = "dm:%s" % target
+        else:
+            raise ValueError("invalid target")
+        if target not in targets:
+            targets.append(target)
+    if not targets:
+        raise ValueError("invalid target")
+    return targets
+
+
+def _validate_range_prefix(prefix):
+    import re as _re
+    prefix = (prefix or "ping").strip()
+    if not _re.fullmatch(r"[A-Za-z0-9_./#@-]{1,40}", prefix) or prefix.startswith("-"):
+        raise ValueError("invalid prefix")
+    return prefix
+
+
+def _range_start(targets, prefix="ping", interval=30):
+    targets = _validate_range_targets(targets)
+    prefix = _validate_range_prefix(prefix)
+    try:
+        interval = max(5, min(300, int(interval or 30)))
+    except (ValueError, TypeError):
+        interval = 30
+    with _range_lock:
+        if _range["running"]:
+            return None, "range test already running"
+        _range.update({"running": True, "target": targets[0], "targets": targets,
+                        "prefix": prefix, "interval": interval, "sent": 0,
+                        "acked": 0, "per_target": {}, "log": [],
+                        "next_due_at": time.time(),
+                        "_init_note": "reloading contacts before first ping"})
+        t = threading.Thread(target=_range_loop, args=(targets, prefix, interval),
+                             daemon=True)
+        _range["thread"] = t
+    t.start()
+    return {"ok": True, "target": targets[0], "targets": targets,
+            "prefix": prefix, "interval": interval}, None
+
+
+def _range_stop():
+    with _range_lock:
+        was_running = bool(_range["running"])
+        _range["running"] = False
+        _range["next_due_at"] = None
+    return {"ok": True, "was_running": was_running}
+
+
+def _range_snapshot():
+    with _range_lock:
+        snap = {k: _range[k] for k in
+                ("running", "target", "prefix", "interval", "sent", "acked",
+                 "log", "next_due_at", "targets", "per_target")}
+        snap["server_now"] = time.time()
+    return snap
+
 
 def _range_loop(_targets, prefix, interval):
     """Background thread: send one range-test message per tick."""
@@ -147,6 +222,271 @@ def _save_config(cfg):
         json.dump(cfg, fh, indent=2, sort_keys=True)
     os.replace(tmp, CONFIG)
     return True
+
+
+def _command_config():
+    cfg = _load_config()
+    rc = cfg.setdefault("remote_commands", {})
+    rc.setdefault("enabled", False)
+    rc.setdefault("controllers", [])
+    return rc
+
+
+def _save_command_config(enabled, controllers):
+    cfg = _load_config()
+    clean = []
+    if not isinstance(controllers, list):
+        controllers = []
+    for item in controllers or []:
+        val = str(item or "").strip()
+        if val and val not in clean:
+            clean.append(val)
+    cfg["remote_commands"] = {"enabled": bool(enabled), "controllers": clean[:20]}
+    _save_config(cfg)
+    return cfg["remote_commands"]
+
+
+def _cmd_log(kind, text, source=None, detail=None):
+    item = {"at": _now(), "kind": kind, "text": text}
+    if source:
+        item["source"] = source
+    if detail:
+        item["detail"] = detail
+    with _cmd_lock:
+        _commands["history"].append(item)
+        if len(_commands["history"]) > _CMD_HISTORY_MAX:
+            _commands["history"] = _commands["history"][-_CMD_HISTORY_MAX:]
+    return item
+
+
+def _cmd_status():
+    rc = _command_config()
+    with _cmd_lock:
+        pending = dict(_commands["pending"]) if _commands["pending"] else None
+        history = list(_commands["history"])
+    return {"enabled": rc.get("enabled", False),
+            "controllers": rc.get("controllers", []),
+            "pending": pending,
+            "history": history}
+
+
+def _target_label(target):
+    info = radio_nodes()
+    for item in info.get("nodes", []):
+        if item.get("id") == target:
+            return item.get("name") or target
+    return target.replace("dm:", "")
+
+
+def _find_command_targets(query):
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    info = radio_nodes()
+    matches = []
+    for item in info.get("nodes", []):
+        name = str(item.get("name") or "")
+        ident = str(item.get("id") or "")
+        hay = " ".join([name, ident, item.get("kind") or ""]).lower()
+        if q == name.lower() or q == ident.lower() or q in hay:
+            matches.append({"id": ident, "name": name or ident,
+                            "kind": item.get("kind") or "node"})
+    return matches[:8]
+
+
+def _command_source(message):
+    return {
+        "scope": str(message.get("scope") or ""),
+        "sender": str(message.get("sender") or ""),
+        "raw": str(message.get("raw") or ""),
+    }
+
+
+def _source_key(source):
+    sender = (source.get("sender") or "").strip()
+    scope = (source.get("scope") or "").strip()
+    return sender or scope
+
+
+def _controller_allowed(message):
+    rc = _command_config()
+    if not rc.get("enabled"):
+        return False
+    allowed = [str(x).strip().lower() for x in rc.get("controllers", []) if str(x).strip()]
+    if not allowed:
+        return False
+    vals = [str(message.get("sender") or "").strip().lower(),
+            str(message.get("scope") or "").strip().lower()]
+    return any(v and v in allowed for v in vals)
+
+
+def _reply_target_for_message(message):
+    scope = str(message.get("scope") or "").strip()
+    sender = str(message.get("sender") or "").strip()
+    info = radio_nodes()
+    lower_scope = scope.lower()
+    if lower_scope in ("public", "public channel"):
+        return "chan:0"
+    for item in info.get("nodes", []):
+        item_id = item.get("id") or ""
+        name = str(item.get("name") or "")
+        if item_id.startswith("chan:") and name.lower() == lower_scope:
+            return item_id
+    if sender:
+        for item in info.get("nodes", []):
+            if item.get("id", "").startswith("dm:") and str(item.get("name") or "").lower() == sender.lower():
+                return item.get("id")
+    if scope and scope.lower() not in ("public", "public channel") and not scope.lower().startswith("chan"):
+        return "dm:%s" % scope
+    return None
+
+
+def _send_command_reply(message, text):
+    target = _reply_target_for_message(message)
+    if not target:
+        _cmd_log("reply_failed", text, _source_key(_command_source(message)), "no reply target")
+        return False
+    try:
+        results = send([target], text)
+        ok = all(r.get("ok") for r in results)
+        _cmd_log("reply", text, _source_key(_command_source(message)), "sent" if ok else "send failed")
+        return ok
+    except Exception as exc:  # noqa: BLE001
+        _cmd_log("reply_failed", text, _source_key(_command_source(message)), str(exc))
+        return False
+
+
+def _range_status_text():
+    snap = _range_snapshot()
+    if not snap.get("running"):
+        return "Range test is idle."
+    sent = int(snap.get("sent") or 0)
+    acked = int(snap.get("acked") or 0)
+    pct = round((acked / sent) * 100) if sent else 0
+    targets = ", ".join(_target_label(t) for t in (snap.get("targets") or []))
+    return "Range test running: %s. %d sent, %d acked, %d%%. Interval %ss." % (
+        targets or "no targets", sent, acked, pct, snap.get("interval") or "?")
+
+
+def _parse_range_command(text):
+    import re as _re
+    s = " ".join(str(text or "").split())
+    lower = s.lower()
+    interval = 30
+    m = _re.search(r"\b(\d{1,3})\s*(?:s|sec|secs|second|seconds)\b", lower)
+    if m:
+        interval = int(m.group(1))
+        s = _re.sub(r"\b\d{1,3}\s*(?:s|sec|secs|second|seconds)\b", " ", s, flags=_re.I)
+    m = _re.search(r"\b(\d{1,2})\s*(?:m|min|mins|minute|minutes)\b", lower)
+    if m:
+        interval = int(m.group(1)) * 60
+        s = _re.sub(r"\b\d{1,2}\s*(?:m|min|mins|minute|minutes)\b", " ", s, flags=_re.I)
+    cleaned = _re.sub(r"\b(start|run|begin|please|range|test|ping|for|to|every|each|the)\b", " ", s, flags=_re.I)
+    target_query = " ".join(cleaned.split()).strip()
+    return target_query, max(5, min(300, interval))
+
+
+def _set_pending_command(source, options):
+    pending = {"source": source, "options": options, "created_at": time.time(),
+               "expires_at": time.time() + 300}
+    with _cmd_lock:
+        _commands["pending"] = pending
+    return pending
+
+
+def _clear_pending_command():
+    with _cmd_lock:
+        _commands["pending"] = None
+
+
+def _format_pending_options(options, intro):
+    lines = [intro]
+    for idx, opt in enumerate(options, start=1):
+        if opt["action"] == "range_start":
+            lines.append("%d. Start range test: %s every %ss" % (
+                idx, ", ".join(_target_label(t) for t in opt["targets"]), opt["interval"]))
+        elif opt["action"] == "range_stop":
+            lines.append("%d. Stop current range test" % idx)
+    lines.append("Reply with a number, or cancel.")
+    return "\n".join(lines)
+
+
+def _execute_command_option(option):
+    if option["action"] == "range_start":
+        result, err = _range_start(option["targets"], option.get("prefix") or "ping",
+                                   option.get("interval") or 30)
+        if err:
+            return False, err
+        return True, "Started range test: %s every %ss." % (
+            ", ".join(_target_label(t) for t in result["targets"]), result["interval"])
+    if option["action"] == "range_stop":
+        _range_stop()
+        return True, "Stopped range test."
+    return False, "unknown command"
+
+
+def _process_remote_command(message):
+    text = str(message.get("text") or "").strip()
+    if not text or str(message.get("direction") or "in") != "in":
+        return
+    if not _controller_allowed(message):
+        return
+    source = _command_source(message)
+    source_key = _source_key(source)
+    lower = text.lower().strip()
+
+    with _cmd_lock:
+        pending = _commands.get("pending")
+    if pending and time.time() > pending.get("expires_at", 0):
+        _clear_pending_command()
+        pending = None
+
+    if lower in ("cancel", "never mind", "nevermind"):
+        _clear_pending_command()
+        _cmd_log("cancel", text, source_key)
+        _send_command_reply(message, "Pending command cancelled.")
+        return
+
+    if pending and source_key == _source_key(pending.get("source", {})) and lower.isdigit():
+        idx = int(lower) - 1
+        options = pending.get("options") or []
+        if 0 <= idx < len(options):
+            ok, reply = _execute_command_option(options[idx])
+            _clear_pending_command()
+            _cmd_log("execute" if ok else "execute_failed", text, source_key, reply)
+            _send_command_reply(message, reply)
+            return
+        _send_command_reply(message, "That option is not available. Reply with a listed number, or cancel.")
+        return
+
+    if lower in ("status", "range status", "test status"):
+        _cmd_log("status", text, source_key)
+        _send_command_reply(message, _range_status_text())
+        return
+
+    if "stop" in lower and "range" in lower:
+        options = [{"action": "range_stop"}]
+        _set_pending_command(source, options)
+        _cmd_log("pending", text, source_key, "stop range")
+        _send_command_reply(message, _format_pending_options(options, "Stop range test?"))
+        return
+
+    if "range" in lower or "range test" in lower:
+        query, interval = _parse_range_command(text)
+        if not query:
+            _cmd_log("need_target", text, source_key)
+            _send_command_reply(message, "Range test needs a target. Example: range test OptimusPrime every 30s")
+            return
+        matches = _find_command_targets(query)
+        if not matches:
+            _cmd_log("no_match", text, source_key, query)
+            _send_command_reply(message, "I could not find a target matching '%s'. Send cancel or try a clearer name." % query)
+            return
+        options = [{"action": "range_start", "targets": [m["id"]],
+                    "interval": interval, "prefix": "ping"} for m in matches[:5]]
+        _set_pending_command(source, options)
+        _cmd_log("pending", text, source_key, "%d option(s)" % len(options))
+        _send_command_reply(message, _format_pending_options(options, "Range test request:"))
 
 
 def _now():
@@ -315,6 +655,8 @@ class Handler(BaseHTTPRequestHandler):
                           if ((_m.get("scope") or ""), (_m.get("text") or "").strip())
                           not in _seen]
                 if _added:
+                    for _m in _added:
+                        _process_remote_command(_m)
                     _store.extend(_added)
                     _store = _store[-300:]
                     try:
@@ -349,12 +691,15 @@ class Handler(BaseHTTPRequestHandler):
             if not self._session():
                 self._json(401, {"error": "unauthorized"})
                 return
-            with _range_lock:
-                snap = {k: _range[k] for k in
-                        ("running", "target", "prefix", "interval", "sent", "acked",
-                         "log", "next_due_at", "targets", "per_target")}
-                snap["server_now"] = time.time()
-            self._json(200, snap)
+            self._json(200, _range_snapshot())
+        elif path == "/api/commands":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured", "setup": "/setup"})
+                return
+            if not self._session():
+                self._json(401, {"error": "unauthorized"})
+                return
+            self._json(200, _cmd_status())
         elif path == "/api/nodes":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
@@ -448,6 +793,7 @@ class Handler(BaseHTTPRequestHandler):
                 if ((_m.get("scope") or ""), (_m.get("text") or "").strip()) not in _seen:
                     _m.setdefault("at", _now())
                     _store.append(_m)
+                    _process_remote_command(_m)
             _store = _store[-300:]
             try:
                 _os.makedirs(os.path.dirname(_p), exist_ok=True)
@@ -455,6 +801,21 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
             self._json(200, {"messages": _store, "fetched": len(_new), "error": _e})
+        elif path == "/api/commands/config":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            rc = _save_command_config(bool(body.get("enabled")), body.get("controllers") or [])
+            _cmd_log("config", "remote command settings updated",
+                     detail=("enabled" if rc.get("enabled") else "disabled"))
+            self._json(200, _cmd_status())
         elif path == "/api/range/start":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})
@@ -467,50 +828,21 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(403, {"error": "bad csrf token"})
                 return
             raw_targets = body.get("targets")
-            if isinstance(raw_targets, list):
-                target_inputs = [str(t).strip() for t in raw_targets]
-            else:
-                target_inputs = [str(body.get("target") or "").strip()]
+            target_inputs = [str(t).strip() for t in raw_targets] if isinstance(raw_targets, list) else [str(body.get("target") or "").strip()]
             prefix = (body.get("prefix") or "ping").strip()
             try:
                 interval = max(5, min(300, int(body.get("interval") or 30)))
             except (ValueError, TypeError):
                 interval = 30
-            import re as _re
-            targets = []
-            for target in target_inputs:
-                if _re.fullmatch(r"chan:\d+", target):
-                    pass
-                elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target) and not target[3:].startswith("-"):
-                    pass
-                elif _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) and not target.startswith("-"):
-                    target = "dm:%s" % target
-                else:
-                    self._json(400, {"error": "invalid target"})
-                    return
-                if target not in targets:
-                    targets.append(target)
-            if not targets:
-                self._json(400, {"error": "invalid target"})
+            try:
+                result, err = _range_start(target_inputs, prefix, interval)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
                 return
-            if not _re.fullmatch(r"[A-Za-z0-9_./#@-]{1,40}", prefix) or prefix.startswith("-"):
-                self._json(400, {"error": "invalid prefix"})
+            if err:
+                self._json(409, {"error": err})
                 return
-            with _range_lock:
-                if _range["running"]:
-                    self._json(409, {"error": "range test already running"})
-                    return
-                _range.update({"running": True, "target": targets[0], "targets": targets,
-                                "prefix": prefix, "interval": interval, "sent": 0,
-                                "acked": 0, "per_target": {}, "log": [],
-                                "next_due_at": time.time(),
-                                "_init_note": "reloading contacts before first ping"})
-                t = threading.Thread(target=_range_loop, args=(targets, prefix, interval),
-                                     daemon=True)
-                _range["thread"] = t
-            t.start()
-            self._json(200, {"ok": True, "target": targets[0], "targets": targets,
-                             "interval": interval})
+            self._json(200, result)
         elif path == "/api/range/targets":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})
@@ -524,21 +856,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             raw_targets = body.get("targets")
             target_inputs = [str(t).strip() for t in raw_targets] if isinstance(raw_targets, list) else []
-            import re as _re
-            targets = []
-            for target in target_inputs:
-                if _re.fullmatch(r"chan:\d+", target):
-                    pass
-                elif _re.fullmatch(r"dm:[A-Za-z0-9 _./#@-]{1,60}", target) and not target[3:].startswith("-"):
-                    pass
-                elif _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,60}", target) and not target.startswith("-"):
-                    target = "dm:%s" % target
-                else:
-                    self._json(400, {"error": "invalid target"})
-                    return
-                if target not in targets:
-                    targets.append(target)
-            if not targets:
+            try:
+                targets = _validate_range_targets(target_inputs)
+            except ValueError:
                 self._json(400, {"error": "pick at least one target"})
                 return
             with _range_lock:
@@ -565,10 +885,7 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
                 self._json(403, {"error": "bad csrf token"})
                 return
-            with _range_lock:
-                _range["running"] = False
-                _range["next_due_at"] = None
-            self._json(200, {"ok": True})
+            self._json(200, _range_stop())
         elif path == "/api/send":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})

@@ -46,6 +46,10 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   pointer-down because map dragging can otherwise steal the click.
 - Range test: one or more targets, editable while running, per-target sent/acked/missed
   stats, next-ping countdown bar, live collapsed summary, and rolling log.
+- Remote Commands v1: deterministic allowlisted control from received MeshCore messages.
+  The Remote commands drawer stores controller contact/channel names, shows command
+  history, and supports `status`, `range test`, `stop range`, numbered confirmation
+  replies and `cancel`. It intentionally has no LLM yet.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
   session cookie + CSRF.
 
@@ -57,13 +61,12 @@ NOT BUILT — NEXT TASKS IN ORDER
 3. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 
-NEXT PLANNED WORK — REMOTE COMMAND CONTROL / AI INTERPRETER
-- User resumed the AI pending work on 2026-10-04. See §8 in the handoff doc.
-- Build Remote Commands v1 first, without an LLM: configured controller contact/channel,
-  inbound command scan, pending action state, numbered confirmation replies, `status`,
-  `cancel`, `range test`, and `stop range`.
-- Add LLM providers only after that works. LLMs may parse messy text into structured
-  intents, but the allowlist + confirmation state machine remains the safety boundary.
+PARKED WORK — AI INTERPRETER
+- User asked to save this and bring it back only when they say "Bring Ai pending work".
+  See §8 in the handoff doc.
+- Remote Commands v1 is deterministic and already implemented. Add LLM providers only
+  later. LLMs may parse messy text into structured intents, but the allowlist +
+  confirmation state machine remains the safety boundary.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens

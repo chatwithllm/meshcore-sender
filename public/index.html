@@ -184,6 +184,29 @@
       <div class="drawer-body" id="drawer-range-body"></div>
     </details>
 
+    <details id="drawer-commands" class="drawer">
+      <summary>Remote commands</summary>
+      <div class="drawer-body" id="drawer-commands-body">
+        <div class="cmd-grid">
+          <label class="cmd-toggle">
+            <input type="checkbox" id="cmd-enabled">
+            <span>Enable remote command control</span>
+          </label>
+          <div>
+            <label>Allowed controllers</label>
+            <textarea id="cmd-controllers" rows="3" placeholder="One contact or channel per line"></textarea>
+            <div class="note">Examples: OptimusPrime, T-DECK PLUS, Public channel. Commands still require confirmation.</div>
+          </div>
+          <div class="row">
+            <button type="button" id="cmd-save">Save</button>
+            <button type="button" id="cmd-refresh" class="ghost">Refresh</button>
+            <span class="note" id="cmd-note" style="margin:0"></span>
+          </div>
+        </div>
+        <div id="cmd-status" class="cmd-status"></div>
+      </div>
+    </details>
+
     <details id="drawer-repeater-map" class="drawer">
       <summary>Repeater map</summary>
       <div class="drawer-body" id="drawer-repeater-map-body"></div>
@@ -1322,6 +1345,71 @@ document.addEventListener('keydown', function (e) {
       .catch(function(){});
   }
 
+  function cmdRender(data){
+    var enabled = document.getElementById('cmd-enabled');
+    var controllers = document.getElementById('cmd-controllers');
+    var status = document.getElementById('cmd-status');
+    if (!enabled || !controllers || !status) return;
+    enabled.checked = !!data.enabled;
+    controllers.value = (data.controllers || []).join('\n');
+    var pending = data.pending;
+    var pendingHtml = pending
+      ? '<div class="cmd-card"><b>Pending confirmation</b><div class="cmd-muted">Expires soon. Reply with a listed number or cancel from the controller.</div></div>'
+      : '<div class="cmd-card cmd-muted">No pending command.</div>';
+    var history = (data.history || []).slice().reverse().slice(0, 12);
+    status.innerHTML =
+      '<div class="cmd-head">' +
+        '<span class="'+(data.enabled ? 'cmd-on' : 'cmd-off')+'">'+(data.enabled ? 'Enabled' : 'Disabled')+'</span>' +
+        '<span>'+esc((data.controllers || []).length) + ' controller(s)</span>' +
+      '</div>' +
+      pendingHtml +
+      '<div class="cmd-history">' +
+        (history.length ? history.map(function(h){
+          return '<div class="cmd-row"><span class="cmd-time">'+esc(h.at||'')+'</span>' +
+            '<b>'+esc(h.kind||'event')+'</b> ' +
+            '<span>'+esc(h.text||'')+'</span>' +
+            (h.detail ? '<small>'+esc(h.detail)+'</small>' : '') +
+          '</div>';
+        }).join('') : '<div class="cmd-card cmd-muted">No command history yet.</div>') +
+      '</div>';
+  }
+
+  function cmdLoad(){
+    return api('/api/commands').then(function(r){
+      if (r.status === 200) cmdRender(r.data);
+    });
+  }
+
+  function cmdSave(){
+    var note = document.getElementById('cmd-note');
+    var enabled = document.getElementById('cmd-enabled');
+    var controllers = document.getElementById('cmd-controllers');
+    var list = (controllers.value || '').split(/\n|,/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (note) note.textContent = 'Saving...';
+    api('/api/commands/config', {method:'POST', body:JSON.stringify({
+      enabled: !!enabled.checked,
+      controllers: list
+    })}).then(function(r){
+      if (r.status !== 200) {
+        if (note) note.textContent = r.data.error || 'Could not save';
+        return;
+      }
+      if (note) note.textContent = 'Saved';
+      cmdRender(r.data);
+      setTimeout(function(){ if (note) note.textContent = ''; }, 1800);
+    });
+  }
+
+  function cmdInit(){
+    var save = document.getElementById('cmd-save');
+    var refresh = document.getElementById('cmd-refresh');
+    if (!save || save.dataset.bound) return;
+    save.dataset.bound = '1';
+    save.onclick = cmdSave;
+    if (refresh) refresh.onclick = cmdLoad;
+    cmdLoad();
+  }
+
   // move the conversation panel into #cv-anchor so it fills the flex slot
   function _mountPanel(){
     var anchor = document.getElementById('cv-anchor');
@@ -1329,9 +1417,9 @@ document.addEventListener('keydown', function (e) {
     if (!anchor || !panel) return;
     if (panel.parentElement !== anchor) anchor.appendChild(panel);
   }
-  var _mountObs = new MutationObserver(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); });
+  var _mountObs = new MutationObserver(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); });
   _mountObs.observe(document.body, {childList:true, subtree:true});
-  setTimeout(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); }, 200);
+  setTimeout(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); }, 200);
 
   function _moveDrawerChildren(){
     // inbox card → raw inbox drawer
@@ -1974,6 +2062,21 @@ document.addEventListener('keydown', function (e) {
   // styles
   var st = document.createElement('style');
   st.textContent =
+    '.cmd-grid{display:grid;gap:10px;max-width:720px}' +
+    '.cmd-toggle{display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:700;letter-spacing:0;text-transform:none}' +
+    '.cmd-toggle input{width:16px;height:16px;accent-color:var(--accent)}' +
+    '#cmd-controllers{min-height:72px;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;resize:vertical}' +
+    '#cmd-controllers:focus{outline:none;border-color:var(--accent)}' +
+    '.cmd-status{margin-top:12px;display:grid;gap:8px;max-width:720px}' +
+    '.cmd-head{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)}' +
+    '.cmd-on,.cmd-off{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-weight:800}' +
+    '.cmd-on{background:#143822;color:#58c07a}.cmd-off{background:#2a1d1d;color:#e88d7a}' +
+    '.cmd-card{border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:8px 10px;font-size:12px}' +
+    '.cmd-muted{color:var(--mut)}' +
+    '.cmd-history{display:grid;gap:4px}' +
+    '.cmd-row{border-bottom:1px solid #ffffff12;padding:5px 0;font-size:12px;color:var(--ink)}' +
+    '.cmd-row small{display:block;color:var(--mut);margin-top:2px}' +
+    '.cmd-time{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8fb8d8;margin-right:6px}' +
     '#cv-panel{height:clamp(420px,calc(100vh - 220px),620px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
     '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
     '@media(max-height:650px){#cv-panel{height:420px}}' +
