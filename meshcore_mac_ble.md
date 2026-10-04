@@ -2,7 +2,7 @@
 
 **Status:** working end to end for sending, receiving, repeater mapping and range testing.
 Remaining work is §8; read §9 and §11 before promising anything.
-**Last updated:** 2026-10-03 (after multi-target range test, repeater map and app-bundle work)
+**Last updated:** 2026-10-04 (after repeater map interaction fixes and multi-target range test)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
 
 This file is the handoff. It records what works, what is broken, and the facts that took
@@ -227,8 +227,10 @@ section/badges.
 **Repeater map.** A **Repeater map** drawer shows only repeaters with usable advertised
 GPS. It renders OpenStreetMap tiles locally in the browser, supports plus/minus and
 mouse-wheel zoom, click-drag panning, selected repeater popups, row/marker selection sync,
-and an "Open full map" link. It is not a routing map; it visualizes advertised repeater
-locations.
+and an "Open full map" link. Marker selection works from both the map and right-side list.
+Popup close is handled on pointer-down and map dragging explicitly ignores popup clicks;
+this was added after screenshots showed the close button being swallowed by map drag/click
+handling. It is not a routing map; it visualizes advertised repeater locations.
 
 **Range test.** The range test drawer supports selecting one or more nodes/channels,
 searching/filtering targets, and changing the active target list while the test is running

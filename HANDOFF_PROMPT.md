@@ -41,7 +41,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
 - Chat windows are bounded-height with internal scrolling; missed/unread counts show in
   the conversation sidebar.
 - Repeater map: repeaters with advertised GPS are shown on an OpenStreetMap-backed map
-  with pan, wheel zoom, marker popup, selected-row sync and "Open full map".
+  with pan, wheel zoom, marker popup, selected-row sync and "Open full map". Marker
+  selection and right-panel selection are both supported; popup close is handled on
+  pointer-down because map dragging can otherwise steal the click.
 - Range test: one or more targets, editable while running, per-target sent/acked/missed
   stats, next-ping countdown bar, live collapsed summary, and rolling log.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
