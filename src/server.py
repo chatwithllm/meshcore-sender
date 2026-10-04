@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """MeshCore sender - a local web UI to send a message to one contact, several
-contacts, or the public channel over BLE.
+contacts, or a channel over BLE.
 
 Stdlib only, on purpose: no pip install step, so it runs on this Mac as-is.
-Transport is the `meshtastic` CLI (the Python lib is not installed for python3).
+Transport is handled by the MeshCore Python SDK through transport_meshcore.py.
 
 Run:  python3 src/server.py            # http://127.0.0.1:8788
-Env:  PORT, DATA_DIR, APP_BASE_URL
+Env:  PORT, DATA_DIR, MESHCORE_ADDR, MESHCORE_TIMEOUT
 """
 import hashlib
 import hmac
 import json
 import os
 import secrets
-import shutil
-import subprocess
 import threading
 import time
 from http.cookies import SimpleCookie
@@ -26,7 +24,6 @@ DATA = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
 PUBLIC = os.path.join(ROOT, "public")
 CONFIG = os.path.join(DATA, "config.json")   # readable, never secrets
 AUTH = os.path.join(DATA, "auth.json")       # passphrase hash, mode 0600
-CLI = os.environ.get("MESHTASTIC_CLI", "meshtastic")
 PORT = int(os.environ.get("PORT", "8788"))
 TIMEOUT = int(os.environ.get("SEND_TIMEOUT", "45"))
 
@@ -548,7 +545,7 @@ def send(targets, text):
 
 # ---------------------------------------------------------------------- routes
 class Handler(BaseHTTPRequestHandler):
-    server_version = "meshtastic-sender"
+    server_version = "meshcore-sender"
 
     def log_message(self, fmt, *args):        # quieter, and no secrets in logs
         print("%s - %s" % (self.address_string(), fmt % args))

@@ -141,7 +141,6 @@ this is deliberately a text parse — verified against 18 of 18 real lines.
 src/server.py               stdlib-only HTTP server (no pip install needed)
 src/transport_meshcore.py   SDK transport, roles, routes, repeater coordinates, inbox
 public/index.html           shell + client app -- ALL JS IS INLINED HERE
-public/destinations.js      source of the inlined block; NOT loaded (dead file)
 deploy/                     staged Dockerfile + launchd plist; not installed
 data/config.json            non-secret config            (gitignored)
 data/auth.json              passphrase hash, mode 0600   (gitignored)
@@ -322,9 +321,8 @@ installed or loaded automatically.
 4. **~21s per healthy destinations call** — the CLI's BLE connect time, not app code. The
    60s server cache can also serve a stale payload, which produced a "56 in the header, 2
    in the list" mismatch.
-5. `public/destinations.js` is dead. Delete it or re-inline.
-6. Housekeeping: no `README.md`; leftover `meshtastic` strings; no tests; no `.gitignore`;
-   `notes/` symlink not created.
+5. No tests yet.
+6. `notes/` symlink not created.
 
 ---
 

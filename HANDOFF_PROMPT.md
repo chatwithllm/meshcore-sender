@@ -19,8 +19,9 @@ WHERE EVERYTHING IS
   Run: cd ~/dev/active/meshcore-sender && python3 src/server.py   ->  http://127.0.0.1:8788
   Files: src/server.py (stdlib HTTP server, no pip deps), src/transport_meshcore.py
   (SDK transport, roles, route metadata, repeater coordinates, inbox),
-  public/index.html (shell + ALL client JS inlined), data/inbox.json (message store),
-  data/auth.json (passphrase hash, mode 0600).
+  public/index.html (shell + ALL client JS inlined), data/inbox.json (local runtime
+  message store, gitignored), data/auth.json (local passphrase hash, mode 0600,
+  gitignored).
 - Radio CLI: meshcore-cli at ~/.local/bin/meshcore-cli.
   Device "MeshCore-MacMini", BLE UUID DDE75E06-4BF2-DB42-7B69-B29FE29CB836.
   ALWAYS address by UUID, never by name (name addressing re-scans BLE and is racy).
@@ -59,8 +60,7 @@ NOT BUILT — NEXT TASKS IN ORDER
 1. User needs to test the Contacts drawer later: Show URI with blank contact,
    export an existing contact URI, import a `meshcore://...` URI if available,
    then Refresh and confirm the contact appears.
-2. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
-   delete the dead public/destinations.js.
+2. Add tests when the project grows enough to support them.
 
 PARKED WORK — AI INTERPRETER
 - User asked to save this and bring it back only when they say "Bring Ai pending work".
