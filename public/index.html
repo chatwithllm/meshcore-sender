@@ -1108,6 +1108,7 @@ document.addEventListener('keydown', function (e) {
   // ---- RANGE TEST -----------------------------------------------------------
   var _rangeRunning = false;
   var _rangePoll = null;
+  var _rangeIdlePoll = null;
   var _rangeTicker = null;
   var RT_DUE_MS = null;
   var RT_INTERVAL_MS = 30000;
@@ -1406,11 +1407,17 @@ document.addEventListener('keydown', function (e) {
   }
 
   function rtUpdateUI(s){
-    _rangeRunning = s.running;
+    _rangeRunning = !!s.running;
     if (s.targets && s.targets.length) {
       RT_SELECTED = s.targets.slice();
       rtSetHidden();
       renderRangeTargets();
+    }
+    if (s.running) {
+      var prefixInput = document.getElementById('rt-prefix');
+      var intervalInput = document.getElementById('rt-interval');
+      if (prefixInput && s.prefix) prefixInput.value = s.prefix;
+      if (intervalInput && s.interval) intervalInput.value = s.interval;
     }
     var startBtn = document.getElementById('rt-start');
     var stopBtn  = document.getElementById('rt-stop');
@@ -1451,6 +1458,13 @@ document.addEventListener('keydown', function (e) {
       .then(function(r){ return r.json(); })
       .then(function(s){ rtUpdateUI(s); })
       .catch(function(){});
+  }
+
+  function rangeEnsureIdlePoll(){
+    if (_rangeIdlePoll) return;
+    _rangeIdlePoll = setInterval(function(){
+      if (!_rangeRunning) rangePollStatus();
+    }, 5000);
   }
 
   function rangeStart(){
@@ -1585,7 +1599,7 @@ document.addEventListener('keydown', function (e) {
     populateTarget: populateRangeTarget,
   };
 
-  setTimeout(function(){ addRangeTest(); rangePollStatus(); }, 800);
+  setTimeout(function(){ addRangeTest(); rangePollStatus(); rangeEnsureIdlePoll(); }, 800);
   document.addEventListener('click', function(){ setTimeout(addRangeTest, 800); }, true);
 
   // debug hook, used by the automated check
