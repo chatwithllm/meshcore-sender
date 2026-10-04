@@ -411,6 +411,9 @@ def destinations():
             continue
         kind = _kind_map.get(contact.get("type", 0), "node")
         item = {"id": "dm:%s" % name, "name": name, "kind": kind}
+        key = (contact.get("public_key") or "").strip()
+        if key:
+            item["key_prefix"] = key[:12]
         lat = _coord(contact.get("adv_lat"), -90, 90)
         lon = _coord(contact.get("adv_lon"), -180, 180)
         if lat is not None and lon is not None:

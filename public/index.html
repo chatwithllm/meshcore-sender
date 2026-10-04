@@ -78,7 +78,7 @@
             border-radius:var(--radius);margin-bottom:10px;padding:0;overflow:hidden}
   #cv-panel > .dgroup{padding:10px 14px 8px;border-bottom:1px solid var(--line);
                       font-size:11px;letter-spacing:.09em;margin:0}
-  #cv-body{flex:1;min-height:0;display:grid;grid-template-columns:180px 1fr;overflow:hidden}
+  #cv-body{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr;overflow:hidden}
   @media(max-width:600px){#cv-body{grid-template-columns:1fr}}
   #cv-sidebar{overflow-y:auto}
   #cv-main{min-height:0;display:flex;flex-direction:column}
@@ -1502,6 +1502,47 @@ document.addEventListener('keydown', function (e) {
     return found ? found.id : null;
   }
 
+  function destData(){
+    return (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
+  }
+
+  function findContactForScope(scope){
+    var s = String(scope || '').trim();
+    if (!s) return null;
+    var lower = s.toLowerCase();
+    var data = destData().concat(contacts);
+    return data.filter(function(c){
+      if (!c || !c.id || c.id.indexOf('dm:') !== 0) return false;
+      if (String(c.name || '').toLowerCase() === lower) return true;
+      var key = String(c.key_prefix || '').toLowerCase();
+      return key && key.indexOf(lower) === 0;
+    })[0] || null;
+  }
+
+  function threadIdForScope(scope){
+    var chanId = channelIdForScope(scope);
+    if (chanId) return chanId;
+    var contact = findContactForScope(scope);
+    if (contact) return contact.id;
+    return 'dm:' + String(scope || '').trim();
+  }
+
+  function displayName(c){
+    if (!c) return '';
+    if (c.id === 'chan:0') return 'Public channel';
+    if (c.id && c.id.indexOf('chan:') === 0) return c.name || ('Channel ' + c.id.split(':')[1]);
+    var contact = findContactForScope(c.name) || findContactForScope((c.id || '').replace(/^dm:/, ''));
+    return (contact && contact.name) || c.name || (c.id || '').replace(/^dm:/, '');
+  }
+
+  function kindLabel(c){
+    if (!c || !c.id) return '';
+    if (c.id.indexOf('chan:') === 0) return 'Channel';
+    if (c.kind === 'repeater') return 'Repeater';
+    if (c.kind === 'room') return 'Room';
+    return 'Node';
+  }
+
   function routeLabel(m) {
     if (!m) return '';
     if (m.route_mode === 'flood') return 'flood route';
@@ -1553,13 +1594,11 @@ document.addEventListener('keydown', function (e) {
       if (_seen.has(key)) return;
       _seen.add(key);
       // scope → thread id
-      var scope = String(m.scope||'').toLowerCase();
-      var chanId = channelIdForScope(m.scope);
-      var tid = chanId || ('dm:' + (m.scope||'').trim());
+      var tid = threadIdForScope(m.scope);
       if (!threads[tid]) threads[tid] = [];
       threads[tid].push({
         dir: dir,
-        who: m.sender || (dir==='out' ? 'you' : m.scope),
+        who: m.sender || (dir==='out' ? 'you' : displayName({id:tid, name:m.scope})),
         text: m.text||'',
         at: m.at || new Date().toTimeString().slice(0,8),
         acked: m.acked,
@@ -1571,7 +1610,7 @@ document.addEventListener('keydown', function (e) {
       changed = true;
       // ensure sidebar has this thread even if not in contacts list
       if (!contacts.find(function(c){return c.id===tid;})) {
-        var label = tid.startsWith('chan:') ? (m.scope || 'Channel') : (m.scope||tid.slice(3));
+        var label = tid.startsWith('chan:') ? displayName({id:tid, name:m.scope}) : displayName({id:tid, name:m.scope||tid.slice(3)});
         contacts.push({id:tid, name:label, kind: tid.startsWith('chan:') ? 'private' : 'node'});
       }
     });
@@ -1598,15 +1637,22 @@ document.addEventListener('keydown', function (e) {
     var ul = document.getElementById('cv-list');
     if (!ul) return;
     // merge contacts from destinations
-    var dest = (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
+    var dest = destData();
     dest.forEach(function(d){
-      if (!contacts.find(function(c){return c.id===d.id;}))
+      var existing = contacts.find(function(c){return c.id===d.id;});
+      if (existing) {
+        existing.name = d.name || existing.name;
+        existing.kind = d.kind || existing.kind;
+        existing.key_prefix = d.key_prefix || existing.key_prefix;
+      } else {
         contacts.push(d);
+      }
     });
+    normalizeExistingThreads();
     var sorted = contacts.slice().sort(function(a,b){
       // threads with messages first
       var ha = (threads[a.id]||[]).length, hb = (threads[b.id]||[]).length;
-      return (hb>0?1:0)-(ha>0?1:0) || String(a.name).localeCompare(String(b.name));
+      return (hb>0?1:0)-(ha>0?1:0) || String(displayName(a)).localeCompare(String(displayName(b)));
     });
     renderMissed(sorted);
     ul.innerHTML = sorted.map(function(c){
@@ -1616,8 +1662,9 @@ document.addEventListener('keydown', function (e) {
       var preview = last ? esc(last.text.slice(0,28))+(last.text.length>28?'…':'') : '';
       var active  = c.id === activeId ? ' cv-active' : '';
       return '<div class="cv-row'+active+'" data-id="'+esc(c.id)+'">' +
-        '<div class="cv-name"><span>'+esc(c.name)+'</span>' +
+        '<div class="cv-name"><span>'+esc(displayName(c))+'</span>' +
         (unread ? '<span class="cv-badge">'+unread+'</span>' : '') + '</div>' +
+        '<div class="cv-meta">'+esc(kindLabel(c))+'</div>' +
         (preview ? '<div class="cv-preview">'+preview+'</div>' : '') +
         '</div>';
     }).join('');
@@ -1630,9 +1677,27 @@ document.addEventListener('keydown', function (e) {
         var hdr = document.getElementById('cv-hdr');
         if (hdr) {
           var c = contacts.find(function(x){return x.id===activeId;});
-          hdr.textContent = c ? c.name : activeId;
+          hdr.textContent = c ? displayName(c) : activeId;
         }
       });
+    });
+  }
+
+  function normalizeExistingThreads(){
+    Object.keys(threads).forEach(function(id){
+      if (id.indexOf('dm:') !== 0) return;
+      var raw = id.slice(3);
+      var contact = findContactForScope(raw);
+      if (!contact || contact.id === id) return;
+      threads[contact.id] = (threads[contact.id] || []).concat(threads[id] || []);
+      delete threads[id];
+      if (readCounts[id]) {
+        readCounts[contact.id] = Math.max(readCounts[contact.id] || 0, readCounts[id]);
+        delete readCounts[id];
+        saveReadCounts();
+      }
+      if (activeId === id) activeId = contact.id;
+      contacts = contacts.filter(function(c){ return c.id !== id; });
     });
   }
 
@@ -1657,7 +1722,7 @@ document.addEventListener('keydown', function (e) {
         var hdr = document.getElementById('cv-hdr');
         if (hdr) {
           var c = contacts.find(function(x){return x.id===activeId;});
-          hdr.textContent = c ? c.name : activeId;
+          hdr.textContent = c ? displayName(c) : activeId;
         }
       });
     });
@@ -1898,17 +1963,18 @@ document.addEventListener('keydown', function (e) {
   var st = document.createElement('style');
   st.textContent =
     '#cv-panel{height:clamp(420px,calc(100vh - 220px),620px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
-    '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:180px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
+    '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
     '@media(max-height:650px){#cv-panel{height:420px}}' +
     '@media(max-width:600px){#cv-panel{height:calc(100vh - 190px);min-height:360px}#cv-body{grid-template-columns:1fr}#cv-sidebar{border-right:none;border-bottom:1px solid var(--line);max-height:150px}}' +
     '#cv-sidebar{background:#0c0e12;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column}' +
-    '#cv-list{min-height:0;overflow-y:auto}' +
-    '.cv-row{padding:7px 8px;border-radius:5px;cursor:pointer;margin-bottom:2px}' +
+    '#cv-list{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:3px}' +
+    '.cv-row{padding:8px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}' +
     '.cv-row:hover{background:#1e222b}' +
-    '.cv-row.cv-active{background:#1a2236;border-left:2px solid var(--accent)}' +
-    '.cv-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;justify-content:space-between}' +
+    '.cv-row.cv-active{background:#1a2236;border-color:#2e6fb5;box-shadow:inset 2px 0 0 var(--accent)}' +
+    '.cv-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;justify-content:space-between}' +
     '.cv-name span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
-    '.cv-preview{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}' +
+    '.cv-meta{font-size:9px;line-height:1;text-transform:uppercase;letter-spacing:.08em;color:#758094;margin-top:4px}' +
+    '.cv-preview{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}' +
     '.cv-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:#08121f;font-size:11px;font-weight:800;line-height:1;flex:0 0 auto}' +
     '#cv-missed{border:1px solid #ffffff1f;border-radius:6px;padding:7px;margin-bottom:8px;background:#121722;flex:0 0 auto}' +
     '.cv-missed-title{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--mut);margin-bottom:5px;font-weight:700}' +
