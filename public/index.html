@@ -982,8 +982,7 @@ document.addEventListener('keydown', function (e) {
       note.textContent = 'Pick one or more targets.';
     } else if (RT_SELECTED.length === 1) {
       var only = RT_SELECTED[0];
-      note.textContent = rtTargetName(only) + ' selected' +
-        (only.indexOf('chan:') === 0 ? ' · channel broadcasts do not return delivery ACKs' : '');
+      note.textContent = rtTargetName(only) + ' selected';
     } else {
       note.textContent = RT_SELECTED.length + ' targets selected';
     }
@@ -1154,14 +1153,13 @@ document.addEventListener('keydown', function (e) {
       var stat = per[t] || {sent:0, acked:0};
       var pct = stat.sent ? Math.round(stat.acked / stat.sent * 100) : 0;
       var missed = Math.max(0, stat.sent - stat.acked);
-      var channel = String(t).indexOf('chan:') === 0;
       return '<div class="rt-target-stat">' +
         '<div class="rt-target-stat-head"><span class="rt-target-stat-name">'+esc(rtTargetName(t))+'</span>' +
-          '<span class="rt-target-stat-pct">'+(channel ? 'broadcast' : esc(pct + '%'))+'</span></div>' +
+          '<span class="rt-target-stat-pct">'+esc(pct + '%')+'</span></div>' +
         '<div class="rt-target-stat-grid">' +
           '<span><b>'+esc(stat.sent)+'</b><small>sent</small></span>' +
           '<span><b>'+esc(stat.acked)+'</b><small>ack</small></span>' +
-          '<span><b>'+esc(channel ? '-' : missed)+'</b><small>miss</small></span>' +
+          '<span><b>'+esc(missed)+'</b><small>miss</small></span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -1239,14 +1237,9 @@ document.addEventListener('keydown', function (e) {
     window.__rtSummaryBase = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
       (s.sent ? ' · ' + s.sent + ' sent · ' + s.acked + ' acked' : '');
     if (s.sent) {
-      if (targetCount === 1 && String(s.target || '').indexOf('chan:') === 0) {
-        stats.textContent = s.sent + ' broadcasts · no ACK expected';
-        stats.style.color = 'var(--mut)';
-      } else {
-        stats.textContent = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
-          ' · ' + s.sent + ' sent · ' + s.acked + ' acked · ' + pct + '%';
-        stats.style.color = pct >= 80 ? '#58c07a' : pct >= 50 ? '#e8c44a' : '#e88d7a';
-      }
+      stats.textContent = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
+        ' · ' + s.sent + ' sent · ' + s.acked + ' acked · ' + pct + '%';
+      stats.style.color = pct >= 80 ? '#58c07a' : pct >= 50 ? '#e8c44a' : '#e88d7a';
     } else if (s.running) {
       stats.textContent = 'waiting for first ping…';
       stats.style.color = 'var(--mut)';
@@ -1470,6 +1463,19 @@ document.addEventListener('keydown', function (e) {
   function esc(s){ return String(s||'').replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+  function channelIdForScope(scope) {
+    var s = String(scope || '').trim();
+    var lower = s.toLowerCase();
+    if (lower === 'public' || lower.indexOf('public channel') === 0) return 'chan:0';
+    var m = lower.match(/^chan(?:nel)?\s*:?(\d+)$/);
+    if (m) return 'chan:' + m[1];
+    var found = contacts.filter(function(c){
+      return c && c.id && c.id.indexOf('chan:') === 0 &&
+        String(c.name || '').toLowerCase() === lower;
+    })[0];
+    return found ? found.id : null;
+  }
+
   function routeLabel(m) {
     if (!m) return '';
     if (m.route_mode === 'flood') return 'flood route';
@@ -1522,8 +1528,8 @@ document.addEventListener('keydown', function (e) {
       _seen.add(key);
       // scope → thread id
       var scope = String(m.scope||'').toLowerCase();
-      var tid = scope.startsWith('public') || scope.startsWith('chan')
-                ? 'chan:0' : 'dm:' + (m.scope||'').trim();
+      var chanId = channelIdForScope(m.scope);
+      var tid = chanId || ('dm:' + (m.scope||'').trim());
       if (!threads[tid]) threads[tid] = [];
       threads[tid].push({
         dir: dir,
@@ -1539,8 +1545,8 @@ document.addEventListener('keydown', function (e) {
       changed = true;
       // ensure sidebar has this thread even if not in contacts list
       if (!contacts.find(function(c){return c.id===tid;})) {
-        var label = tid.startsWith('chan:') ? 'Public channel' : (m.scope||tid.slice(3));
-        contacts.push({id:tid, name:label, kind: tid.startsWith('chan:') ? 'public' : 'node'});
+        var label = tid.startsWith('chan:') ? (m.scope || 'Channel') : (m.scope||tid.slice(3));
+        contacts.push({id:tid, name:label, kind: tid.startsWith('chan:') ? 'private' : 'node'});
       }
     });
     return changed;

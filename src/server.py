@@ -89,9 +89,9 @@ def _range_loop(_targets, prefix, interval):
                 if target.startswith("chan:"):
                     results = mc.send([target], text)
                     ok = all(r.get("ok") for r in results)
-                    acked = False
+                    acked = ok
                     rtt = 0
-                    detail = "channel broadcast; no delivery ACK" if ok else (
+                    detail = "channel broadcast sent" if ok else (
                         (results[0].get("out") if results else None) or "send failed")
                 else:
                     contact_name = target.split(":", 1)[1] if target.startswith("dm:") else target

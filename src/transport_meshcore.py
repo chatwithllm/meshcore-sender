@@ -82,6 +82,17 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def _channel_name(idx) -> str:
+    try:
+        n = int(idx)
+    except (TypeError, ValueError):
+        n = 0
+    for channel in _channels:
+        if channel.get("id") == "chan:%d" % n:
+            return channel.get("name") or ("Channel %d" % n)
+    return "Public channel" if n == 0 else "Channel %d" % n
+
+
 def _route_hops(path_hex=None, hash_mode=None, contacts=None) -> list:
     try:
         size = int(hash_mode) + 1
@@ -174,7 +185,7 @@ async def _connect_async():
         p = event.payload
         idx = p.get("channel_idx", 0)
         text = (p.get("text") or "").strip()
-        scope = "public" if idx == 0 else "chan%d" % idx
+        scope = _channel_name(idx)
         sender = None
         if ": " in text:
             sender, text = text.split(": ", 1)
@@ -199,6 +210,8 @@ async def _connect_async():
             name = ("Public channel (%s)" % raw_name) if raw_name else "Public channel"
         else:
             name = raw_name or ("Channel %d" % idx)
+            if name.lower() == "private":
+                name = "Private channel"
         channels.append({
             "id": "chan:%d" % idx,
             "name": name,
@@ -487,7 +500,7 @@ async def _drain_queue_async(mc) -> None:
         elif ev.type == EventType.CHANNEL_MSG_RECV:
             idx = p.get("channel_idx", 0)
             text = (p.get("text") or "").strip()
-            scope = "public" if idx == 0 else "chan%d" % idx
+            scope = _channel_name(idx)
             sender = None
             if ": " in text:
                 sender, text = text.split(": ", 1)
