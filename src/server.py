@@ -45,6 +45,7 @@ _range = {
     "log": [],          # list of {"seq":N,"ts":"HH:MM:SS","acked":bool,"rtt_ms":N,"detail":str}
     "thread": None,
     "next_due_at": None,
+    "started_by": None,
 }
 _range_lock = threading.Lock()
 _RANGE_LOG_MAX = 200
@@ -85,7 +86,7 @@ def _validate_range_prefix(prefix):
     return prefix
 
 
-def _range_start(targets, prefix="ping", interval=30):
+def _range_start(targets, prefix="ping", interval=30, started_by="you"):
     targets = _validate_range_targets(targets)
     prefix = _validate_range_prefix(prefix)
     try:
@@ -99,13 +100,15 @@ def _range_start(targets, prefix="ping", interval=30):
                         "prefix": prefix, "interval": interval, "sent": 0,
                         "acked": 0, "per_target": {}, "log": [],
                         "next_due_at": time.time(),
+                        "started_by": (started_by or "you"),
                         "_init_note": "reloading contacts before first ping"})
         t = threading.Thread(target=_range_loop, args=(targets, prefix, interval),
                              daemon=True)
         _range["thread"] = t
     t.start()
     return {"ok": True, "target": targets[0], "targets": targets,
-            "prefix": prefix, "interval": interval}, None
+            "prefix": prefix, "interval": interval,
+            "started_by": (started_by or "you")}, None
 
 
 def _range_stop():
@@ -120,7 +123,7 @@ def _range_snapshot():
     with _range_lock:
         snap = {k: _range[k] for k in
                 ("running", "target", "prefix", "interval", "sent", "acked",
-                 "log", "next_due_at", "targets", "per_target")}
+                 "log", "next_due_at", "targets", "per_target", "started_by")}
         snap["server_now"] = time.time()
     return snap
 
@@ -408,10 +411,11 @@ def _format_pending_options(options, intro):
     return "\n".join(lines)
 
 
-def _execute_command_option(option):
+def _execute_command_option(option, source_label=None):
     if option["action"] == "range_start":
         result, err = _range_start(option["targets"], option.get("prefix") or "ping",
-                                   option.get("interval") or 30)
+                                   option.get("interval") or 30,
+                                   started_by=source_label or "remote command")
         if err:
             return False, err
         return True, "Started range test: %s every %ss." % (
@@ -448,7 +452,7 @@ def _process_remote_command(message):
         idx = int(lower) - 1
         options = pending.get("options") or []
         if 0 <= idx < len(options):
-            ok, reply = _execute_command_option(options[idx])
+            ok, reply = _execute_command_option(options[idx], source_key)
             _clear_pending_command()
             _cmd_log("execute" if ok else "execute_failed", text, source_key, reply)
             _send_command_reply(message, reply)
@@ -866,12 +870,15 @@ class Handler(BaseHTTPRequestHandler):
             raw_targets = body.get("targets")
             target_inputs = [str(t).strip() for t in raw_targets] if isinstance(raw_targets, list) else [str(body.get("target") or "").strip()]
             prefix = (body.get("prefix") or "ping").strip()
+            started_by = (body.get("started_by") or "you").strip()
+            if not started_by or len(started_by) > 40:
+                started_by = "you"
             try:
                 interval = max(5, min(300, int(body.get("interval") or 30)))
             except (ValueError, TypeError):
                 interval = 30
             try:
-                result, err = _range_start(target_inputs, prefix, interval)
+                result, err = _range_start(target_inputs, prefix, interval, started_by=started_by)
             except ValueError as exc:
                 self._json(400, {"error": str(exc)})
                 return
@@ -907,7 +914,7 @@ class Handler(BaseHTTPRequestHandler):
                     _range["per_target"].setdefault(target, {"sent": 0, "acked": 0})
                 snap = {k: _range[k] for k in
                         ("running", "target", "prefix", "interval", "sent", "acked",
-                         "log", "next_due_at", "targets", "per_target")}
+                         "log", "next_due_at", "targets", "per_target", "started_by")}
                 snap["server_now"] = time.time()
             self._json(200, snap)
         elif path == "/api/range/stop":

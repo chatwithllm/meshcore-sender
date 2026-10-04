@@ -1277,6 +1277,7 @@ document.addEventListener('keydown', function (e) {
             '<div class="rt-clock-label">Range test idle</div>' +
             '<div class="rt-clock-track"><div id="rt-clock-fill" class="rt-clock-fill"></div></div>' +
           '</div>' +
+          '<div id="rt-started-by" class="rt-started-by"></div>' +
         '</div>' +
         '<div class="rt-side">' +
           '<div class="dgroup">Node stats</div>' +
@@ -1426,8 +1427,14 @@ document.addEventListener('keydown', function (e) {
     stopBtn.disabled  = !s.running;
     var pct = s.sent ? Math.round(s.acked / s.sent * 100) : 0;
     var stats = document.getElementById('rt-stats');
+    var startedBy = s.started_by || '';
+    var started = document.getElementById('rt-started-by');
+    if (started) {
+      started.textContent = s.running && startedBy ? 'Started by ' + startedBy : '';
+    }
     var targetCount = rtTargetCount(s);
-    window.__rtSummaryBase = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
+    window.__rtSummaryBase = (startedBy ? startedBy + ' · ' : '') +
+      targetCount + ' target' + (targetCount === 1 ? '' : 's') +
       (s.sent ? ' · ' + s.sent + ' sent · ' + s.acked + ' acked' : '');
     if (s.sent) {
       stats.textContent = targetCount + ' target' + (targetCount === 1 ? '' : 's') +
@@ -1478,7 +1485,8 @@ document.addEventListener('keydown', function (e) {
       .then(function(sess){
         return fetch('/api/range/start', {method:'POST', credentials:'same-origin',
           headers:{'Content-Type':'application/json','X-CSRF-Token': sess.csrf || ''},
-          body: JSON.stringify({targets: targets, prefix: prefix, interval: interval})});
+          body: JSON.stringify({targets: targets, prefix: prefix, interval: interval,
+                                started_by: 'you'})});
       }).then(function(r){ return r.json(); })
       .then(function(j){
         if (!j.ok) { alert('Failed to start: ' + (j.error || 'unknown')); return; }
@@ -1488,7 +1496,7 @@ document.addEventListener('keydown', function (e) {
         if (stats) { stats.textContent = ''; stats.style.color = 'var(--mut)'; }
         rtUpdateUI({running:true, target:targets[0], targets:targets, prefix:prefix, interval:interval,
                     sent:0, acked:0, log:[], next_due_at:(Date.now()/1000)+interval,
-                    server_now:(Date.now()/1000)});
+                    server_now:(Date.now()/1000), started_by:'you'});
       }).catch(function(e){ alert('Error: ' + e); });
   }
 
@@ -1669,6 +1677,7 @@ document.addEventListener('keydown', function (e) {
     '.rt-clock-fill{height:100%;width:0%;background:#4da3ff;border-radius:999px;transition:width .2s linear}' +
     '.rt-clock.due .rt-clock-fill{background:#e8c44a}' +
     '.rt-clock.idle{opacity:.55}' +
+    '.rt-started-by{min-height:16px;margin:-4px 0 10px;color:#8fb8d8;font-size:12px;font-weight:650}' +
     '.rt-target-stats{display:flex;flex-direction:column;gap:8px}' +
     '.rt-target-stat{border:1px solid var(--line);border-radius:6px;background:#11151d;padding:8px;font-size:12px}' +
     '.rt-target-stat-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}' +
