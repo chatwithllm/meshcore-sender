@@ -947,6 +947,7 @@ document.addEventListener('keydown', function (e) {
   var RT_DATA = [];
   var RT_FILTER = 'all';
   var RT_QUERY = '';
+  var RT_SORT = 'az';
   var RT_SELECTED = [];
 
   function rtKind(d){
@@ -1020,7 +1021,8 @@ document.addEventListener('keydown', function (e) {
           String(d.id || '').toLowerCase().indexOf(q) < 0) return false;
       return true;
     }).sort(function(a,b){
-      return String(a.name || '').localeCompare(String(b.name || ''));
+      var cmp = String(a.name || '').localeCompare(String(b.name || ''), undefined, {sensitivity:'base'});
+      return RT_SORT === 'za' ? -cmp : cmp;
     });
     if (!items.length) {
       list.innerHTML = '<div class="rt-empty">No matching targets.</div>';
@@ -1079,12 +1081,20 @@ document.addEventListener('keydown', function (e) {
             '<label>Targets</label>' +
             '<input id="rt-target" type="hidden">' +
             '<input id="rt-search" type="text" placeholder="Search nodes or channels…" style="width:100%;margin-bottom:6px">' +
-            '<div id="rt-filters" class="chips" style="margin-bottom:6px">' +
-              '<button type="button" class="chip on" data-filter="all">All</button>' +
-              '<button type="button" class="chip" data-filter="node">Nodes</button>' +
-              '<button type="button" class="chip" data-filter="repeater">Repeaters</button>' +
-              '<button type="button" class="chip" data-filter="room">Rooms</button>' +
-              '<button type="button" class="chip" data-filter="chan">Channels</button>' +
+            '<div class="rt-target-tools">' +
+              '<div id="rt-filters" class="chips">' +
+                '<button type="button" class="chip on" data-filter="all">All</button>' +
+                '<button type="button" class="chip" data-filter="node">Nodes</button>' +
+                '<button type="button" class="chip" data-filter="repeater">Repeaters</button>' +
+                '<button type="button" class="chip" data-filter="room">Rooms</button>' +
+                '<button type="button" class="chip" data-filter="chan">Channels</button>' +
+              '</div>' +
+              '<label class="rt-sort-label">Sort ' +
+                '<select id="rt-sort">' +
+                  '<option value="az">Name A-Z</option>' +
+                  '<option value="za">Name Z-A</option>' +
+                '</select>' +
+              '</label>' +
             '</div>' +
             '<div id="rt-target-list" class="rt-target-list"></div>' +
             '<div id="rt-target-note" class="note" style="margin-top:6px"></div>' +
@@ -1113,6 +1123,10 @@ document.addEventListener('keydown', function (e) {
     document.getElementById('rt-stop').onclick = rangeStop;
     document.getElementById('rt-search').oninput = function(){
       RT_QUERY = this.value || '';
+      renderRangeTargets();
+    };
+    document.getElementById('rt-sort').onchange = function(){
+      RT_SORT = this.value || 'az';
       renderRangeTargets();
     };
     document.querySelectorAll('#rt-filters .chip').forEach(function(btn){
@@ -1393,8 +1407,11 @@ document.addEventListener('keydown', function (e) {
     '.rt-config-grid{display:grid;grid-template-columns:minmax(160px,1fr) minmax(120px,.55fr);gap:8px;margin-bottom:10px}' +
     '.rt-target-picker{margin-bottom:10px}' +
     '.rt-target-picker label{font-size:11px;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}' +
+    '.rt-target-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}' +
+    '.rt-sort-label{display:flex!important;align-items:center;gap:5px;margin:0!important;white-space:nowrap}' +
+    '.rt-sort-label select{height:25px;width:auto;padding:2px 24px 2px 8px;font-size:12px}' +
     '.rt-actions{align-items:center;margin-bottom:10px}' +
-    '@media(max-width:860px){.rt-layout,.rt-config-grid{grid-template-columns:1fr}}' +
+    '@media(max-width:860px){.rt-layout,.rt-config-grid{grid-template-columns:1fr}.rt-target-tools{align-items:flex-start;flex-direction:column}}' +
     '.rt-side{border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:10px;min-height:150px}' +
     '.rt-clock{margin:-2px 0 10px;color:var(--mut);font-size:12px}' +
     '.rt-clock-label{margin-bottom:5px}' +
