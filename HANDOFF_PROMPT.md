@@ -57,6 +57,10 @@ NOT BUILT — NEXT TASKS IN ORDER
 3. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 
+PARKED UNTIL USER SAYS "Bring Ai pending work"
+- AI / remote command control by designated MeshCore sender/channel. See §8 in the handoff
+  doc. Start with deterministic allowlist + confirmation flow; add LLM interpretation later.
+
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
   or keys. The passphrase is theirs and was set by them.

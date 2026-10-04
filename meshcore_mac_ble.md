@@ -301,6 +301,15 @@ public key, plus a name; and a per-contact "show URI". Maps to `import_contact` 
 services themselves. Loopback by default; wider exposure means Tailscale Serve, never a
 public route.
 
+**AI / remote command control — parked until user says "Bring Ai pending work".**
+Idea: allow a designated contact or channel to control this node by sending messages
+over MeshCore. The safe first version should be a deterministic command inbox with an
+allowlist, pending-command confirmation, `status`, `cancel`, and range-test start/stop
+actions. LLM support can come later as an optional interpreter for messy text, with
+providers such as OpenAI, Claude, Google, Grok, DeepSeek, and others configured by API
+key. The LLM should never be the safety boundary; it should propose structured intents
+that still go through the same confirmation/state machine.
+
 ---
 
 ## 9. The verification gap (read before promising anything)
