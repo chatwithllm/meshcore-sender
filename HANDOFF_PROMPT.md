@@ -56,7 +56,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   session cookie + CSRF.
 
 NOT BUILT — NEXT TASKS IN ORDER
-1. Deploy units: Dockerfile + launchd plist written to deploy/ and STAGED ONLY.
+1. User needs to test the Contacts drawer later: Show URI with blank contact,
+   export an existing contact URI, import a `meshcore://...` URI if available,
+   then Refresh and confirm the contact appears.
 2. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 

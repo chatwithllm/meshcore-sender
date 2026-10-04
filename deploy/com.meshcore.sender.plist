@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.meshcore.sender</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>/Users/assistant/dev/active/meshcore-sender/src/server.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/assistant/dev/active/meshcore-sender</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PORT</key>
+    <string>8788</string>
+    <key>DATA_DIR</key>
+    <string>/Users/assistant/Library/Application Support/MeshCore Sender/data</string>
+    <key>MESHCORE_ADDR</key>
+    <string>DDE75E06-4BF2-DB42-7B69-B29FE29CB836</string>
+    <key>MESHCORE_TIMEOUT</key>
+    <string>30</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/meshcore-sender.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/meshcore-sender.err.log</string>
+</dict>
+</plist>

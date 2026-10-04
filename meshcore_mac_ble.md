@@ -1,7 +1,8 @@
 # MeshCore on a Mac mini over BLE — progress, ground truth, and rebuild guide
 
 **Status:** working end to end for sending, receiving, contact import/export, repeater
-mapping, range testing and deterministic remote command control.
+mapping, range testing and deterministic remote command control. Deploy files are staged
+but not installed.
 Remaining work is §8; read §9 and §11 before promising anything.
 **Last updated:** 2026-10-04 (after contact management drawer)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
@@ -141,6 +142,7 @@ src/server.py               stdlib-only HTTP server (no pip install needed)
 src/transport_meshcore.py   SDK transport, roles, routes, repeater coordinates, inbox
 public/index.html           shell + client app -- ALL JS IS INLINED HERE
 public/destinations.js      source of the inlined block; NOT loaded (dead file)
+deploy/                     staged Dockerfile + launchd plist; not installed
 data/config.json            non-secret config            (gitignored)
 data/auth.json              passphrase hash, mode 0600   (gitignored)
 data/inbox.json             persistent message store     (written by the app)
@@ -155,7 +157,7 @@ filename allowlist first.
 cd ~/dev/active/meshcore-sender && python3 src/server.py   # → http://127.0.0.1:8788
 ```
 Env: `PORT` (8788), `MESHCORE_ADDR` (defaults to the UUID), `MESHCORE_CLI`,
-`MESHCORE_TIMEOUT` (30), `DATA_DIR`.
+`MESHCORE_TIMEOUT` (30), `DATA_DIR`, `MESHCORE_SDK_SITE` (optional SDK path override).
 
 **Routes**
 ```
@@ -270,6 +272,15 @@ LLM feature; see §8.
 contact URI, manually add a contact by full 64-character public key plus display name and
 type (`Node`, `Repeater`, `Room`), and export this node's URI or a known contact's URI.
 Import/add invalidate the server destination cache and refresh the UI contact list.
+User could not test this yet; reminder item: open Contacts, show this node URI with a
+blank contact field, export a known contact URI, import a URI if available, Refresh, and
+confirm the contact appears in the destination list.
+
+**Deploy files.** `deploy/Dockerfile` and `deploy/com.meshcore.sender.plist` are staged
+only. The launchd plist is the practical Mac path and keeps `DATA_DIR` under
+`~/Library/Application Support/MeshCore Sender/data`. Docker is included for packaging
+experiments, but macOS Docker generally cannot access the BLE radio directly. Nothing is
+installed or loaded automatically.
 
 ---
 
@@ -286,7 +297,8 @@ Import/add invalidate the server destination cache and refresh the UI contact li
 | Multi-target range test | user screenshots confirmed running totals, ACK counts, countdown and live collapsed header |
 | Repeater map | user screenshots confirmed OSM tiles, selectable repeaters, pan/zoom and popups |
 | Remote Commands v1 | deterministic parser/config/history endpoints compiled; UI drawer added; live/fetch inbox hooks call the command scanner |
-| Contact management | SDK add/import/export helpers compiled; Contacts drawer added; endpoints session/CSRF gated |
+| Contact management | SDK add/import/export helpers compiled; Contacts drawer added; endpoints session/CSRF gated; pending user radio test |
+| Deploy files | Dockerfile + launchd plist staged in `deploy/`; not installed |
 | Advert route | `/api/advert` → 401 without a session (registered + gated) |
 | Auto-recovery | empty table → `['floodadv','reload_contacts']` → contacts recovered; cooldown blocks repeats |
 | Layout | `gridColumns: '633px 633px'` (2 columns); `starVisible: True` |
@@ -311,16 +323,12 @@ Import/add invalidate the server destination cache and refresh the UI contact li
    60s server cache can also serve a stale payload, which produced a "56 in the header, 2
    in the list" mismatch.
 5. `public/destinations.js` is dead. Delete it or re-inline.
-6. Housekeeping: no `README.md`; leftover `meshtastic` strings; no `deploy/` units; no
-   tests; no `.gitignore`; `notes/` symlink not created.
+6. Housekeeping: no `README.md`; leftover `meshtastic` strings; no tests; no `.gitignore`;
+   `notes/` symlink not created.
 
 ---
 
 ## 8. Requested, designed, NOT built
-
-**Deploy** — Dockerfile + launchd plist in `deploy/`, **staged only**. This user starts
-services themselves. Loopback by default; wider exposure means Tailscale Serve, never a
-public route.
 
 **AI interpreter — parked pending work.**
 User asked to save this idea and bring it back only when they say **"Bring Ai pending

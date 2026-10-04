@@ -30,8 +30,10 @@ import time
 # The SDK lives under the python3.11 uv-tools install.  Works transparently
 # when the server is invoked with that interpreter; also works with other
 # Pythons by inserting the site-packages path explicitly.
-_SDK_SITE = ("/Users/assistant/.local/share/uv/tools/meshcore-cli"
-             "/lib/python3.11/site-packages")
+_SDK_SITE = os.environ.get(
+    "MESHCORE_SDK_SITE",
+    "/Users/assistant/.local/share/uv/tools/meshcore-cli/lib/python3.11/site-packages",
+)
 if _SDK_SITE not in sys.path:
     sys.path.insert(0, _SDK_SITE)
 
