@@ -354,6 +354,44 @@ def _reply_target_for_message(message):
     return None
 
 
+def _append_command_reply_to_inbox(message, text, ok, results=None):
+    scope = str(message.get("scope") or message.get("sender") or "remote command").strip()
+    if not scope:
+        scope = "remote command"
+    item = {
+        "scope": scope,
+        "sender": None,
+        "text": text,
+        "at": _now(),
+        "direction": "out",
+        "raw": "cmdout|%s|%s|%d" % (scope, text, int(time.time() * 1000)),
+        "acked": bool(ok),
+        "command_reply": True,
+    }
+    first = (results or [{}])[0] if isinstance(results, list) and results else {}
+    for key in ("route_hops", "route_mode", "route_path"):
+        if key in first:
+            item[key] = first.get(key)
+    path = os.path.join(DATA, "inbox.json")
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            store = json.load(fh)
+        if not isinstance(store, list):
+            store = []
+    except Exception:  # noqa: BLE001 - command history should never break replies
+        store = []
+    store.append(item)
+    store = store[-300:]
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(store, fh)
+        os.replace(tmp, path)
+    except Exception as exc:  # noqa: BLE001
+        _cmd_log("reply_store_failed", text, _source_key(_command_source(message)), str(exc))
+
+
 def _send_command_reply(message, text):
     target = _reply_target_for_message(message)
     if not target:
@@ -362,9 +400,11 @@ def _send_command_reply(message, text):
     try:
         results = send([target], text)
         ok = all(r.get("ok") for r in results)
+        _append_command_reply_to_inbox(message, text, ok, results)
         _cmd_log("reply", text, _source_key(_command_source(message)), "sent" if ok else "send failed")
         return ok
     except Exception as exc:  # noqa: BLE001
+        _append_command_reply_to_inbox(message, text, False)
         _cmd_log("reply_failed", text, _source_key(_command_source(message)), str(exc))
         return False
 

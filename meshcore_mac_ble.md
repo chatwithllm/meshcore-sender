@@ -266,9 +266,11 @@ controllers are scanned when the inbox is served or fetched. Supported commands 
 deterministic: `status`, `range test <target> every <seconds>`, `stop range`, numbered
 confirmation replies, and `cancel`. Free-text range requests never start immediately:
 they create a pending action and the app replies over MeshCore with numbered choices. A
-controller reply such as `1` executes the selected action. The command history is
-in-memory and visible in the drawer for the current server run. This is not the LLM
-feature; see §8.
+controller reply such as `1` executes the selected action. Automatic command replies are
+also mirrored into `inbox.json` as outbound chat messages, so a received `status` command
+and the app's response are visible in the conversation history instead of only in the
+radio send path. The command history is in-memory and visible in the drawer for the
+current server run. This is not the LLM feature; see §8.
 
 **Contacts drawer.** The **Contacts** drawer has three flows: import a `meshcore://...`
 contact URI, manually add a contact by full 64-character public key plus display name and
