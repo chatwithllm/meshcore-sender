@@ -50,15 +50,14 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   The Remote commands drawer stores controller contact/channel names, shows command
   history, and supports `status`, `range test`, `stop range`, numbered confirmation
   replies and `cancel`. It intentionally has no LLM yet.
+- Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
+  public key + display name + type, and export this node/contact URI.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
   session cookie + CSRF.
 
 NOT BUILT — NEXT TASKS IN ORDER
-1. Add contact: one card accepting EITHER a contact URI (QR scanned on the phone) OR a
-   public key, plus a name; and a per-contact "show URI" action. Maps to import_contact /
-   add_contact / export_contact. No QR library needed — the phone scans, the app imports.
-2. Deploy units: Dockerfile + launchd plist written to deploy/ and STAGED ONLY.
-3. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
+1. Deploy units: Dockerfile + launchd plist written to deploy/ and STAGED ONLY.
+2. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 
 PARKED WORK — AI INTERPRETER

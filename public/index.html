@@ -97,6 +97,13 @@
   .drawer summary::-webkit-details-marker{display:none}
   .drawer-body{padding:14px;border-top:1px solid var(--line)}
   #drawer-messages-body .card,#drawer-range-body .card{background:transparent;border:none;padding:0}
+  .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .contact-panel{border:1px solid var(--line);border-radius:6px;padding:12px;background:#0f1218}
+  .contact-panel h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
+  .contact-panel textarea{min-height:76px}
+  .contact-panel select{width:100%;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 10px;font:inherit}
+  .contact-output{margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#0c0e12;min-height:35px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;color:var(--mut)}
+  @media(max-width:760px){.contact-grid{grid-template-columns:1fr}}
 </style>
 <style>
   /* message box is resizable by the user, per request */
@@ -171,6 +178,58 @@
           <span class="note" id="sendNote" style="margin:0"></span>
         </div>
         <div id="results" class="results"></div>
+      </div>
+    </details>
+
+    <details id="drawer-contacts" class="drawer">
+      <summary>Contacts</summary>
+      <div class="drawer-body">
+        <div class="contact-grid">
+          <div class="contact-panel">
+            <h3>Import URI</h3>
+            <label for="contact-uri">Contact URI</label>
+            <textarea id="contact-uri" placeholder="meshcore://..."></textarea>
+            <div class="row" style="margin-top:10px">
+              <button type="button" id="contact-import">Import</button>
+              <span class="note" id="contact-import-note" style="margin:0"></span>
+            </div>
+          </div>
+          <div class="contact-panel">
+            <h3>Add public key</h3>
+            <label for="contact-key">Public key</label>
+            <input id="contact-key" type="text" placeholder="64 hex characters">
+            <div class="row" style="margin-top:8px">
+              <div style="flex:1;min-width:160px">
+                <label for="contact-name">Name</label>
+                <input id="contact-name" type="text" placeholder="Display name">
+              </div>
+              <div style="flex:0 0 140px">
+                <label for="contact-kind">Type</label>
+                <select id="contact-kind">
+                  <option value="1">Node</option>
+                  <option value="2">Repeater</option>
+                  <option value="3">Room</option>
+                </select>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button type="button" id="contact-add">Add</button>
+              <span class="note" id="contact-add-note" style="margin:0"></span>
+            </div>
+          </div>
+          <div class="contact-panel">
+            <h3>Show URI</h3>
+            <label for="contact-export-name">Contact</label>
+            <input id="contact-export-name" type="text" list="contact-options" placeholder="Name, key prefix, or blank for this node">
+            <datalist id="contact-options"></datalist>
+            <div class="row" style="margin-top:10px">
+              <button type="button" id="contact-export">Show URI</button>
+              <button type="button" class="ghost" id="contact-copy">Copy</button>
+              <span class="note" id="contact-export-note" style="margin:0"></span>
+            </div>
+            <div id="contact-export-out" class="contact-output">No URI loaded.</div>
+          </div>
+        </div>
       </div>
     </details>
 
@@ -357,6 +416,90 @@ $('sendGo').onclick = async () => {
   }
   if (r.data.ok) { $('text').value = ''; $('text').dispatchEvent(new Event('input')); }
 };
+
+function contactNote(id, text, good) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = good === true ? 'var(--ok)' : good === false ? 'var(--bad)' : 'var(--mut)';
+}
+
+function contactRefreshOptions() {
+  const list = $('contact-options');
+  if (!list) return;
+  const data = (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
+  list.innerHTML = (data || []).filter((d) => d && d.id && d.id.indexOf('dm:') === 0)
+    .map((d) => '<option value="' + String(d.name || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) + '"></option>')
+    .join('');
+}
+
+async function contactImport() {
+  const btn = $('contact-import');
+  const uri = ($('contact-uri').value || '').trim();
+  if (!uri) return contactNote('contact-import-note', 'paste a contact URI first', false);
+  btn.disabled = true;
+  contactNote('contact-import-note', 'importing...', null);
+  const r = await api('/api/contacts/import', {method:'POST', body:JSON.stringify({uri})});
+  btn.disabled = false;
+  if (r.status === 401) return show('login');
+  if (!r.data.ok) return contactNote('contact-import-note', r.data.error || 'import failed', false);
+  $('contact-uri').value = '';
+  contactNote('contact-import-note', 'Imported. Refreshing contacts...', true);
+  await loadNodes(true);
+  contactRefreshOptions();
+  setTimeout(() => contactNote('contact-import-note', '', null), 2200);
+}
+
+async function contactAdd() {
+  const btn = $('contact-add');
+  const public_key = ($('contact-key').value || '').trim();
+  const name = ($('contact-name').value || '').trim();
+  const kind = parseInt(($('contact-kind').value || '1'), 10) || 1;
+  if (!public_key || !name) return contactNote('contact-add-note', 'key and name are required', false);
+  btn.disabled = true;
+  contactNote('contact-add-note', 'adding...', null);
+  const r = await api('/api/contacts/add', {method:'POST', body:JSON.stringify({public_key, name, kind})});
+  btn.disabled = false;
+  if (r.status === 401) return show('login');
+  if (!r.data.ok) return contactNote('contact-add-note', r.data.error || 'add failed', false);
+  $('contact-key').value = '';
+  $('contact-name').value = '';
+  contactNote('contact-add-note', 'Added. Refreshing contacts...', true);
+  await loadNodes(true);
+  contactRefreshOptions();
+  setTimeout(() => contactNote('contact-add-note', '', null), 2200);
+}
+
+async function contactExport() {
+  const btn = $('contact-export');
+  const out = $('contact-export-out');
+  const name = ($('contact-export-name').value || '').trim();
+  btn.disabled = true;
+  contactNote('contact-export-note', 'loading...', null);
+  const r = await api('/api/contacts/export', {method:'POST', body:JSON.stringify({name})});
+  btn.disabled = false;
+  if (r.status === 401) return show('login');
+  if (!r.data.ok) {
+    out.textContent = 'No URI loaded.';
+    return contactNote('contact-export-note', r.data.error || 'export failed', false);
+  }
+  out.textContent = r.data.uri || '';
+  contactNote('contact-export-note', name ? 'Contact URI ready' : 'This node URI ready', true);
+}
+
+function contactCopy() {
+  const out = $('contact-export-out');
+  const text = (out && out.textContent || '').trim();
+  if (!text || text === 'No URI loaded.') return contactNote('contact-export-note', 'nothing to copy yet', false);
+  navigator.clipboard.writeText(text)
+    .then(() => contactNote('contact-export-note', 'Copied', true))
+    .catch(() => contactNote('contact-export-note', 'Copy failed', false));
+}
+
+if ($('contact-import')) $('contact-import').onclick = contactImport;
+if ($('contact-add')) $('contact-add').onclick = contactAdd;
+if ($('contact-export')) $('contact-export').onclick = contactExport;
+if ($('contact-copy')) $('contact-copy').onclick = contactCopy;
 
 boot();
 </script>
@@ -766,6 +909,7 @@ document.addEventListener('keydown', function (e) {
          if (window.__range && window.__range.populateTarget) {
            window.__range.populateTarget(DATA);
          }
+         if (window.contactRefreshOptions) window.contactRefreshOptions();
          renderRepeaterMap();
          setTimeout(render, 0);
        })
@@ -1452,6 +1596,7 @@ document.addEventListener('keydown', function (e) {
                        window.__mcDest._data = DATA;
                        render();
                        populateRangeTarget(DATA);
+                       if (window.contactRefreshOptions) window.contactRefreshOptions();
                        renderRepeaterMap();
                      },
                      nameFor: function(id){ var f = DATA.filter(function(i){ return i.id === id; })[0];

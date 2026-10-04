@@ -816,6 +816,45 @@ class Handler(BaseHTTPRequestHandler):
             _cmd_log("config", "remote command settings updated",
                      detail=("enabled" if rc.get("enabled") else "disabled"))
             self._json(200, _cmd_status())
+        elif path in ("/api/contacts/import", "/api/contacts/add", "/api/contacts/export"):
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            import re as _re
+            import transport_meshcore as mc
+            if path == "/api/contacts/import":
+                uri = (body.get("uri") or "").strip()
+                if not uri.startswith("meshcore://") or not _re.fullmatch(r"meshcore://[0-9a-fA-F]+", uri):
+                    self._json(400, {"ok": False, "error": "paste a valid meshcore:// contact URI"})
+                    return
+                result = mc.import_contact(uri)
+            elif path == "/api/contacts/add":
+                key = (body.get("public_key") or "").strip()
+                name = (body.get("name") or "").strip()
+                kind = body.get("kind") or 1
+                if not _re.fullmatch(r"[0-9a-fA-F]{64}", key):
+                    self._json(400, {"ok": False, "error": "public key must be 64 hex characters"})
+                    return
+                if not _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,32}", name) or name.startswith("-"):
+                    self._json(400, {"ok": False, "error": "name must be 1-32 safe characters"})
+                    return
+                result = mc.add_contact(key, name, kind)
+            else:
+                name = (body.get("name") or "").strip()
+                if name and (not _re.fullmatch(r"[A-Za-z0-9 _./#@-]{1,64}", name) or name.startswith("-")):
+                    self._json(400, {"ok": False, "error": "bad contact name"})
+                    return
+                result = mc.export_contact(name or None)
+            if result.get("ok"):
+                _nodes_cache.update({"nodes": [], "at": 0, "error": None})
+            self._json(200 if result.get("ok") else 502, result)
         elif path == "/api/range/start":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})

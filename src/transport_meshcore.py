@@ -461,6 +461,108 @@ def route(target):
     return info
 
 
+def add_contact(public_key, name, kind=1):
+    """Add a contact from a public key, display name and MeshCore contact type."""
+    mc, err = _get_mc()
+    if mc is None:
+        return {"ok": False, "error": err or "not connected"}
+    from meshcore import EventType
+    public_key = (public_key or "").strip()
+    name = (name or "").strip()
+    try:
+        bytes.fromhex(public_key)
+    except ValueError:
+        return {"ok": False, "error": "public key must be hex"}
+    if len(public_key) != 64:
+        return {"ok": False, "error": "public key must be 64 hex characters"}
+    if not name:
+        return {"ok": False, "error": "name is required"}
+    try:
+        kind = int(kind)
+    except (TypeError, ValueError):
+        kind = 1
+    if kind not in (1, 2, 3):
+        kind = 1
+    contact = {
+        "public_key": public_key,
+        "type": kind,
+        "flags": 0,
+        "out_path_len": -1,
+        "out_path": "",
+        "out_path_hash_mode": 0,
+        "adv_name": name[:32],
+        "adv_lat": 0,
+        "adv_lon": 0,
+        "last_advert": 0,
+    }
+    try:
+        ev = _submit(mc.commands.add_contact(contact), timeout=TIMEOUT)
+        if ev.type == EventType.ERROR:
+            return {"ok": False, "error": str(ev.payload)[:200]}
+        mc.contacts[public_key] = contact
+        try:
+            _submit(mc.commands.get_contacts(), timeout=10)
+        except Exception as exc:  # noqa: BLE001 - contact is already added
+            log.warning("contact refresh after add failed: %s", exc)
+        return {"ok": True, "contact": {"id": "dm:%s" % contact["adv_name"],
+                                        "name": contact["adv_name"]}}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": "add contact error: %s" % exc}
+
+
+def import_contact(uri):
+    """Import a meshcore:// contact URI."""
+    mc, err = _get_mc()
+    if mc is None:
+        return {"ok": False, "error": err or "not connected"}
+    from meshcore import EventType
+    uri = (uri or "").strip()
+    if not uri.startswith("meshcore://"):
+        return {"ok": False, "error": "contact URI must start with meshcore://"}
+    payload = uri[11:].strip()
+    try:
+        card_data = bytes.fromhex(payload)
+    except ValueError:
+        return {"ok": False, "error": "contact URI payload is not valid hex"}
+    try:
+        ev = _submit(mc.commands.import_contact(card_data), timeout=TIMEOUT)
+        if ev.type == EventType.ERROR:
+            return {"ok": False, "error": str(ev.payload)[:200]}
+        try:
+            _submit(mc.commands.get_contacts(), timeout=10)
+        except Exception as exc:  # noqa: BLE001 - contact is already imported
+            log.warning("contact refresh after import failed: %s", exc)
+        return {"ok": True}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": "import contact error: %s" % exc}
+
+
+def export_contact(name=None):
+    """Export this node's URI, or a known contact's URI when name is provided."""
+    mc, err = _get_mc()
+    if mc is None:
+        return {"ok": False, "error": err or "not connected"}
+    from meshcore import EventType
+    target = None
+    name = (name or "").strip()
+    if name:
+        target = mc.get_contact_by_name(name)
+        if target is None:
+            try:
+                target = mc.get_contact_by_key_prefix(name)
+            except Exception:
+                target = None
+        if target is None:
+            return {"ok": False, "error": "contact '%s' not found" % name}
+    try:
+        ev = _submit(mc.commands.export_contact(target), timeout=TIMEOUT)
+        if ev.type == EventType.ERROR:
+            return {"ok": False, "error": str(ev.payload)[:200]}
+        return {"ok": True, "uri": ev.payload.get("uri", "")}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": "export contact error: %s" % exc}
+
+
 def send(targets, text):
     """Send to each target. targets are ids from destinations()."""
     mc, err = _get_mc()

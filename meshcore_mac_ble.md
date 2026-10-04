@@ -1,9 +1,9 @@
 # MeshCore on a Mac mini over BLE — progress, ground truth, and rebuild guide
 
-**Status:** working end to end for sending, receiving, repeater mapping, range testing
-and deterministic remote command control.
+**Status:** working end to end for sending, receiving, contact import/export, repeater
+mapping, range testing and deterministic remote command control.
 Remaining work is §8; read §9 and §11 before promising anything.
-**Last updated:** 2026-10-04 (after Remote Commands v1)
+**Last updated:** 2026-10-04 (after contact management drawer)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
 
 This file is the handoff. It records what works, what is broken, and the facts that took
@@ -176,6 +176,9 @@ POST /api/range/targets   update targets while running                (session +
 POST /api/range/stop      stop active range test                      (session + CSRF)
 GET  /api/commands        remote command settings/history             (session)
 POST /api/commands/config {enabled, controllers:[...]}                 (session + CSRF)
+POST /api/contacts/import {uri:"meshcore://..."}                       (session + CSRF)
+POST /api/contacts/add    {public_key,name,kind}                       (session + CSRF)
+POST /api/contacts/export {name?} -> meshcore:// URI                   (session + CSRF)
 ```
 Targets are `chan:<index>` or `dm:<name>`. Session = cookie `ms_session` (12h). CSRF is
 the `X-CSRF-Token` header compared against the session record.
@@ -263,6 +266,11 @@ numbered choices. A controller reply such as `1` executes the selected action. T
 history is in-memory and visible in the drawer for the current server run. This is not the
 LLM feature; see §8.
 
+**Contacts drawer.** The **Contacts** drawer has three flows: import a `meshcore://...`
+contact URI, manually add a contact by full 64-character public key plus display name and
+type (`Node`, `Repeater`, `Room`), and export this node's URI or a known contact's URI.
+Import/add invalidate the server destination cache and refresh the UI contact list.
+
 ---
 
 ## 6. VERIFIED working
@@ -278,6 +286,7 @@ LLM feature; see §8.
 | Multi-target range test | user screenshots confirmed running totals, ACK counts, countdown and live collapsed header |
 | Repeater map | user screenshots confirmed OSM tiles, selectable repeaters, pan/zoom and popups |
 | Remote Commands v1 | deterministic parser/config/history endpoints compiled; UI drawer added; live/fetch inbox hooks call the command scanner |
+| Contact management | SDK add/import/export helpers compiled; Contacts drawer added; endpoints session/CSRF gated |
 | Advert route | `/api/advert` → 401 without a session (registered + gated) |
 | Auto-recovery | empty table → `['floodadv','reload_contacts']` → contacts recovered; cooldown blocks repeats |
 | Layout | `gridColumns: '633px 633px'` (2 columns); `starVisible: True` |
@@ -308,10 +317,6 @@ LLM feature; see §8.
 ---
 
 ## 8. Requested, designed, NOT built
-
-**Add contact** — a card taking **either** a contact URI (QR scanned on the phone) **or** a
-public key, plus a name; and a per-contact "show URI". Maps to `import_contact` /
-`add_contact` / `export_contact`. No QR library needed — the phone scans, the app imports.
 
 **Deploy** — Dockerfile + launchd plist in `deploy/`, **staged only**. This user starts
 services themselves. Loopback by default; wider exposure means Tailscale Serve, never a
