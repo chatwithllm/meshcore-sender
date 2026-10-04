@@ -2,7 +2,7 @@
 
 **Status:** working end to end for sending, receiving, repeater mapping and range testing.
 Remaining work is §8; read §9 and §11 before promising anything.
-**Last updated:** 2026-10-04 (after Range Test layout cleanup and channel-name preservation)
+**Last updated:** 2026-10-04 (after channel display alias support)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
 
 This file is the handoff. It records what works, what is broken, and the facts that took
@@ -75,7 +75,9 @@ built for Meshtastic and could not see the radio at all.
 1: private [bd707c1fb3788148b0eda5fc4f57b6f0]
 ```
 `<index>: <name> [<key>]` — the **colon** breaks a naive `isdigit()`; the name is the text
-**before `[`**.
+**before `[`**. On 2026-10-04 the standard SDK/CLI channel call still returned
+`1: private`; if the user-facing private channel label is different, it is not exposed
+by this command.
 
 **`contacts`**
 ```
@@ -241,6 +243,10 @@ channels are treated as sent when the radio accepts the broadcast. The UI shows 
 sent/acked %, per-target sent/acked/missed stats, a next-ping countdown bar, a live
 collapsed header summary and a rolling log. Channel labels preserve the radio-provided
 channel name when one is available instead of rewriting it to a generic private label.
+If the radio only returns a generic stored name such as `private`, the transport checks
+`~/.config/meshcore/scopes` and `DATA_DIR/channel_names.json` for a local display alias.
+`channel_names.json` can map `"chan:1"`, `"1"`, the raw name (`"private"`), or the
+channel hash to the desired label.
 
 ---
 

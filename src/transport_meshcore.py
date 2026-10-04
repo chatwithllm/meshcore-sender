@@ -21,6 +21,7 @@ from Claude's Bash tool.
 """
 
 import logging
+import json
 import os
 import sys
 import threading
@@ -76,6 +77,10 @@ _channels: list = []          # [{id, name, kind}] — cached on connect
 _inbox: list = []             # [{scope, sender, text, at, direction, raw}]
 _inbox_lock = threading.Lock()
 _DRAIN_INTERVAL = int(os.environ.get("MESHCORE_DRAIN_INTERVAL", "8"))  # seconds
+_DATA_DIR = os.environ.get(
+    "DATA_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data"),
+)
 
 
 def _now() -> str:
@@ -91,6 +96,78 @@ def _channel_name(idx) -> str:
         if channel.get("id") == "chan:%d" % n:
             return channel.get("name") or ("Channel %d" % n)
     return "Public channel" if n == 0 else "Channel %d" % n
+
+
+def _read_channel_aliases() -> dict:
+    """Load non-secret display aliases for channel names/slots/hashes.
+
+    MeshCore's channel API may return a generic stored slot name such as
+    "private". The CLI also supports a scopes file that maps that stored name
+    to a user-facing scope. The app additionally accepts DATA_DIR/channel_names.json
+    for local display aliases without touching radio configuration.
+    """
+    aliases = {}
+
+    scopes_path = os.path.expanduser("~/.config/meshcore/scopes")
+    if os.path.exists(scopes_path):
+        try:
+            with open(scopes_path, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith(";") or line.startswith("#"):
+                        continue
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        aliases[parts[0].strip().lower()] = parts[1].strip()
+        except Exception as exc:  # noqa: BLE001 - aliases are optional
+            log.warning("could not read channel scopes file: %s", exc)
+
+    names_path = os.path.join(_DATA_DIR, "channel_names.json")
+    if os.path.exists(names_path):
+        try:
+            with open(names_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, str) and value.strip():
+                        aliases[str(key).strip().lower()] = value.strip()
+                    elif isinstance(value, dict):
+                        name = (value.get("name") or value.get("display_name") or "").strip()
+                        if name:
+                            aliases[str(key).strip().lower()] = name
+            elif isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    name = (item.get("name") or item.get("display_name") or "").strip()
+                    keys = [item.get("id"), item.get("slot"), item.get("idx"),
+                            item.get("channel_idx"), item.get("raw_name"),
+                            item.get("channel_name"), item.get("hash"),
+                            item.get("channel_hash")]
+                    for key in keys:
+                        if name and key is not None:
+                            aliases[str(key).strip().lower()] = name
+        except Exception as exc:  # noqa: BLE001 - aliases are optional
+            log.warning("could not read channel_names.json: %s", exc)
+
+    return aliases
+
+
+def _channel_display_name(idx, raw_name: str, channel_hash: str = None) -> str:
+    raw = (raw_name or "").strip("\x00").strip()
+    aliases = _read_channel_aliases()
+    keys = [
+        "chan:%d" % idx,
+        str(idx),
+        raw.lower(),
+        (channel_hash or "").strip().lower(),
+    ]
+    for key in keys:
+        if key and aliases.get(key):
+            return aliases[key]
+    if idx == 0:
+        return ("Public channel (%s)" % raw) if raw and raw.lower() != "public" else "Public channel"
+    return raw or ("Channel %d" % idx)
 
 
 def _route_hops(path_hex=None, hash_mode=None, contacts=None) -> list:
@@ -206,13 +283,13 @@ async def _connect_async():
         if ev.type == EventType.ERROR:
             break
         raw_name = (ev.payload.get("channel_name") or "").strip("\x00").strip()
-        if idx == 0:
-            name = ("Public channel (%s)" % raw_name) if raw_name else "Public channel"
-        else:
-            name = raw_name or ("Channel %d" % idx)
+        channel_hash = ev.payload.get("channel_hash")
+        name = _channel_display_name(idx, raw_name, channel_hash)
         channels.append({
             "id": "chan:%d" % idx,
             "name": name,
+            "raw_name": raw_name,
+            "channel_hash": channel_hash,
             "kind": "public" if idx == 0 else "private",
         })
 
@@ -397,7 +474,7 @@ def send(targets, text):
                 out = "" if ok else str(ev.payload)[:200]
             except Exception as e:
                 ok, out = False, "send_chan_msg error: %s" % e
-            results.append({"target": "channel %d" % idx, "ok": ok, "out": out})
+            results.append({"target": _channel_name(idx), "ok": ok, "out": out})
         else:
             who = t.split(":", 1)[1] if ":" in t else t
             contact = mc.get_contact_by_name(who)
