@@ -1059,6 +1059,9 @@ document.addEventListener('keydown', function (e) {
     document.querySelectorAll('#rt-filters .chip').forEach(function(btn){
       btn.classList.toggle('on', btn.dataset.filter === RT_FILTER);
     });
+    document.querySelectorAll('#rt-sort .chip').forEach(function(btn){
+      btn.classList.toggle('on', btn.dataset.sort === RT_SORT);
+    });
   }
 
   function addRangeTest(){
@@ -1089,12 +1092,10 @@ document.addEventListener('keydown', function (e) {
                 '<button type="button" class="chip" data-filter="room">Rooms</button>' +
                 '<button type="button" class="chip" data-filter="chan">Channels</button>' +
               '</div>' +
-              '<label class="rt-sort-label">Sort ' +
-                '<select id="rt-sort">' +
-                  '<option value="az">Name A-Z</option>' +
-                  '<option value="za">Name Z-A</option>' +
-                '</select>' +
-              '</label>' +
+              '<div id="rt-sort" class="chips rt-sort-chips" aria-label="Sort targets by name">' +
+                '<button type="button" class="chip on" data-sort="az">A-Z</button>' +
+                '<button type="button" class="chip" data-sort="za">Z-A</button>' +
+              '</div>' +
             '</div>' +
             '<div id="rt-target-list" class="rt-target-list"></div>' +
             '<div id="rt-target-note" class="note" style="margin-top:6px"></div>' +
@@ -1125,13 +1126,15 @@ document.addEventListener('keydown', function (e) {
       RT_QUERY = this.value || '';
       renderRangeTargets();
     };
-    document.getElementById('rt-sort').onchange = function(){
-      RT_SORT = this.value || 'az';
-      renderRangeTargets();
-    };
     document.querySelectorAll('#rt-filters .chip').forEach(function(btn){
       btn.onclick = function(){
         RT_FILTER = btn.dataset.filter || 'all';
+        renderRangeTargets();
+      };
+    });
+    document.querySelectorAll('#rt-sort .chip').forEach(function(btn){
+      btn.onclick = function(){
+        RT_SORT = btn.dataset.sort || 'az';
         renderRangeTargets();
       };
     });
@@ -1407,9 +1410,9 @@ document.addEventListener('keydown', function (e) {
     '.rt-config-grid{display:grid;grid-template-columns:minmax(160px,1fr) minmax(120px,.55fr);gap:8px;margin-bottom:10px}' +
     '.rt-target-picker{margin-bottom:10px}' +
     '.rt-target-picker label{font-size:11px;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}' +
-    '.rt-target-tools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}' +
-    '.rt-sort-label{display:flex!important;align-items:center;gap:5px;margin:0!important;white-space:nowrap}' +
-    '.rt-sort-label select{height:25px;width:auto;padding:2px 24px 2px 8px;font-size:12px}' +
+    '.rt-target-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px}' +
+    '.rt-target-tools .chips{margin:0}' +
+    '.rt-sort-chips{flex:0 0 auto}' +
     '.rt-actions{align-items:center;margin-bottom:10px}' +
     '@media(max-width:860px){.rt-layout,.rt-config-grid{grid-template-columns:1fr}.rt-target-tools{align-items:flex-start;flex-direction:column}}' +
     '.rt-side{border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:10px;min-height:150px}' +
