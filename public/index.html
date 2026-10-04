@@ -253,8 +253,17 @@
           </label>
           <div>
             <label>Allowed controllers</label>
-            <textarea id="cmd-controllers" rows="3" placeholder="One contact or channel per line"></textarea>
-            <div class="note">Examples: OptimusPrime, T-DECK PLUS, Public channel. Commands still require confirmation.</div>
+            <div id="cmd-selected" class="cmd-picks"></div>
+            <div class="cmd-add-row">
+              <input id="cmd-manual" type="text" placeholder="Add contact or channel name">
+              <button type="button" id="cmd-add-manual" class="ghost">Add</button>
+            </div>
+            <div class="note">Selected controllers can remotely request actions. Commands still require confirmation.</div>
+          </div>
+          <div>
+            <label>Available contacts and channels</label>
+            <div id="cmd-available" class="cmd-available"></div>
+            <div class="note">Star a contact/channel to pin it here, then click a row to allow or remove it.</div>
           </div>
           <div class="row">
             <button type="button" id="cmd-save">Save</button>
@@ -910,6 +919,7 @@ document.addEventListener('keydown', function (e) {
            window.__range.populateTarget(DATA);
          }
          if (window.contactRefreshOptions) window.contactRefreshOptions();
+         if (window.cmdRender && window.CMD_STATE) window.cmdRender(window.CMD_STATE);
          renderRepeaterMap();
          setTimeout(render, 0);
        })
@@ -1511,22 +1521,109 @@ document.addEventListener('keydown', function (e) {
       .catch(function(){});
   }
 
+  var CMD_STATE = {enabled:false, controllers:[], favorites:[], history:[], pending:null};
+  window.CMD_STATE = CMD_STATE;
+
+  function cmdControllerChoices(){
+    var data = (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
+    var seen = {};
+    return (data || []).filter(function(d){
+      if (!d || !d.name || seen[d.name]) return false;
+      seen[d.name] = true;
+      return String(d.id || '').indexOf('dm:') === 0 || String(d.id || '').indexOf('chan:') === 0;
+    }).map(function(d){
+      var kind = String(d.id || '').indexOf('chan:') === 0 ? 'channel' : (d.kind || 'contact');
+      return {name:d.name, kind:kind};
+    }).sort(function(a,b){
+      var af = (CMD_STATE.favorites || []).indexOf(a.name) >= 0 ? 0 : 1;
+      var bf = (CMD_STATE.favorites || []).indexOf(b.name) >= 0 ? 0 : 1;
+      return af - bf || String(a.name).localeCompare(String(b.name), undefined, {sensitivity:'base'});
+    });
+  }
+
+  function cmdToggleController(name){
+    name = String(name || '').trim();
+    if (!name) return;
+    var list = (CMD_STATE.controllers || []).slice();
+    var idx = list.indexOf(name);
+    if (idx >= 0) list.splice(idx, 1);
+    else list.push(name);
+    CMD_STATE.controllers = list;
+    cmdRender(CMD_STATE);
+  }
+
+  function cmdToggleFavorite(name){
+    name = String(name || '').trim();
+    if (!name) return;
+    var list = (CMD_STATE.favorites || []).slice();
+    var idx = list.indexOf(name);
+    if (idx >= 0) list.splice(idx, 1);
+    else list.push(name);
+    CMD_STATE.favorites = list;
+    cmdRender(CMD_STATE);
+  }
+
+  function cmdAddManual(){
+    var input = document.getElementById('cmd-manual');
+    var name = input && input.value.trim();
+    if (!name) return;
+    if ((CMD_STATE.controllers || []).indexOf(name) < 0) CMD_STATE.controllers.push(name);
+    if (input) input.value = '';
+    cmdRender(CMD_STATE);
+  }
+
   function cmdRender(data){
+    CMD_STATE = {
+      enabled: !!(data && data.enabled),
+      controllers: ((data && data.controllers) || []).slice(),
+      favorites: ((data && data.favorites) || []).slice(),
+      pending: data && data.pending,
+      history: ((data && data.history) || []).slice()
+    };
+    window.CMD_STATE = CMD_STATE;
     var enabled = document.getElementById('cmd-enabled');
-    var controllers = document.getElementById('cmd-controllers');
+    var selected = document.getElementById('cmd-selected');
+    var available = document.getElementById('cmd-available');
     var status = document.getElementById('cmd-status');
-    if (!enabled || !controllers || !status) return;
-    enabled.checked = !!data.enabled;
-    controllers.value = (data.controllers || []).join('\n');
-    var pending = data.pending;
+    if (!enabled || !selected || !available || !status) return;
+    enabled.checked = CMD_STATE.enabled;
+    selected.innerHTML = CMD_STATE.controllers.length
+      ? CMD_STATE.controllers.map(function(name){
+          return '<button type="button" class="cmd-pill" data-cmd-remove="'+esc(name)+'">'+
+            esc(name)+' <span>×</span></button>';
+        }).join('')
+      : '<div class="cmd-card cmd-muted">No controllers selected.</div>';
+    var choices = cmdControllerChoices();
+    available.innerHTML = choices.length
+      ? choices.map(function(item){
+          var picked = CMD_STATE.controllers.indexOf(item.name) >= 0;
+          var fav = CMD_STATE.favorites.indexOf(item.name) >= 0;
+          return '<div class="cmd-choice'+(picked ? ' picked' : '')+'">' +
+            '<button type="button" class="cmd-star'+(fav ? ' on' : '')+'" data-cmd-fav="'+esc(item.name)+'" title="Favorite">'+(fav ? '★' : '☆')+'</button>' +
+            '<button type="button" class="cmd-choice-main" data-cmd-choice="'+esc(item.name)+'">' +
+              '<b>'+esc(item.name)+'</b><span>'+esc(item.kind)+'</span>' +
+            '</button>' +
+          '</div>';
+        }).join('')
+      : '<div class="cmd-card cmd-muted">Refresh contacts to populate this list.</div>';
+    selected.querySelectorAll('[data-cmd-remove]').forEach(function(btn){
+      btn.onclick = function(){ cmdToggleController(btn.dataset.cmdRemove); };
+    });
+    available.querySelectorAll('[data-cmd-choice]').forEach(function(btn){
+      btn.onclick = function(){ cmdToggleController(btn.dataset.cmdChoice); };
+    });
+    available.querySelectorAll('[data-cmd-fav]').forEach(function(btn){
+      btn.onclick = function(e){ e.preventDefault(); e.stopPropagation(); cmdToggleFavorite(btn.dataset.cmdFav); };
+    });
+    var pending = CMD_STATE.pending;
     var pendingHtml = pending
       ? '<div class="cmd-card"><b>Pending confirmation</b><div class="cmd-muted">Expires soon. Reply with a listed number or cancel from the controller.</div></div>'
       : '<div class="cmd-card cmd-muted">No pending command.</div>';
-    var history = (data.history || []).slice().reverse().slice(0, 12);
+    var history = (CMD_STATE.history || []).slice().reverse().slice(0, 12);
     status.innerHTML =
       '<div class="cmd-head">' +
-        '<span class="'+(data.enabled ? 'cmd-on' : 'cmd-off')+'">'+(data.enabled ? 'Enabled' : 'Disabled')+'</span>' +
-        '<span>'+esc((data.controllers || []).length) + ' controller(s)</span>' +
+        '<span class="'+(CMD_STATE.enabled ? 'cmd-on' : 'cmd-off')+'">'+(CMD_STATE.enabled ? 'Enabled' : 'Disabled')+'</span>' +
+        '<span>'+esc(CMD_STATE.controllers.length) + ' controller(s)</span>' +
       '</div>' +
       pendingHtml +
       '<div class="cmd-history">' +
@@ -1549,12 +1646,13 @@ document.addEventListener('keydown', function (e) {
   function cmdSave(){
     var note = document.getElementById('cmd-note');
     var enabled = document.getElementById('cmd-enabled');
-    var controllers = document.getElementById('cmd-controllers');
-    var list = (controllers.value || '').split(/\n|,/).map(function(x){ return x.trim(); }).filter(Boolean);
+    var list = (CMD_STATE.controllers || []).slice();
+    var favorites = (CMD_STATE.favorites || []).slice();
     if (note) note.textContent = 'Saving...';
     api('/api/commands/config', {method:'POST', body:JSON.stringify({
       enabled: !!enabled.checked,
-      controllers: list
+      controllers: list,
+      favorites: favorites
     })}).then(function(r){
       if (r.status !== 200) {
         if (note) note.textContent = r.data.error || 'Could not save';
@@ -1573,6 +1671,12 @@ document.addEventListener('keydown', function (e) {
     save.dataset.bound = '1';
     save.onclick = cmdSave;
     if (refresh) refresh.onclick = cmdLoad;
+    var add = document.getElementById('cmd-add-manual');
+    if (add) add.onclick = cmdAddManual;
+    var manual = document.getElementById('cmd-manual');
+    if (manual) manual.onkeydown = function(e){
+      if (e.key === 'Enter') { e.preventDefault(); cmdAddManual(); }
+    };
     cmdLoad();
   }
 
@@ -1619,6 +1723,7 @@ document.addEventListener('keydown', function (e) {
                        render();
                        populateRangeTarget(DATA);
                        if (window.contactRefreshOptions) window.contactRefreshOptions();
+                       if (window.cmdRender && window.CMD_STATE) window.cmdRender(window.CMD_STATE);
                        renderRepeaterMap();
                      },
                      nameFor: function(id){ var f = DATA.filter(function(i){ return i.id === id; })[0];
@@ -2233,8 +2338,19 @@ document.addEventListener('keydown', function (e) {
     '.cmd-grid{display:grid;gap:10px;max-width:720px}' +
     '.cmd-toggle{display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:700;letter-spacing:0;text-transform:none}' +
     '.cmd-toggle input{width:16px;height:16px;accent-color:var(--accent)}' +
-    '#cmd-controllers{min-height:72px;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit;resize:vertical}' +
-    '#cmd-controllers:focus{outline:none;border-color:var(--accent)}' +
+    '.cmd-picks{display:flex;flex-wrap:wrap;gap:6px;min-height:38px;border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:7px}' +
+    '.cmd-pill{background:#17253a;color:var(--ink);border:1px solid #2e6fb5;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:700}' +
+    '.cmd-pill span{color:#9fb7d4;margin-left:4px}' +
+    '.cmd-add-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}' +
+    '.cmd-add-row input{min-width:0}' +
+    '.cmd-available{display:grid;gap:5px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:6px}' +
+    '.cmd-choice{display:grid;grid-template-columns:30px 1fr;align-items:stretch;border:1px solid transparent;border-radius:6px}' +
+    '.cmd-choice.picked{border-color:#2e6fb5;background:#17253a}' +
+    '.cmd-star{background:transparent;color:#8190a8;border:0;padding:6px;font-size:15px;line-height:1}' +
+    '.cmd-star.on{color:#e8c44a}' +
+    '.cmd-choice-main{display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;color:var(--ink);border:0;padding:7px 8px;text-align:left}' +
+    '.cmd-choice-main b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}' +
+    '.cmd-choice-main span{flex:0 0 auto;border:1px solid #ffffff20;border-radius:4px;padding:1px 5px;color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.06em}' +
     '.cmd-status{margin-top:12px;display:grid;gap:8px;max-width:720px}' +
     '.cmd-head{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut)}' +
     '.cmd-on,.cmd-off{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-weight:800}' +

@@ -229,19 +229,32 @@ def _command_config():
     rc = cfg.setdefault("remote_commands", {})
     rc.setdefault("enabled", False)
     rc.setdefault("controllers", [])
+    rc.setdefault("favorites", [])
     return rc
 
 
-def _save_command_config(enabled, controllers):
-    cfg = _load_config()
+def _clean_name_list(items, limit=20):
     clean = []
-    if not isinstance(controllers, list):
-        controllers = []
-    for item in controllers or []:
+    if not isinstance(items, list):
+        items = []
+    for item in items or []:
         val = str(item or "").strip()
         if val and val not in clean:
             clean.append(val)
-    cfg["remote_commands"] = {"enabled": bool(enabled), "controllers": clean[:20]}
+    return clean[:limit]
+
+
+def _save_command_config(enabled, controllers, favorites=None):
+    cfg = _load_config()
+    old = cfg.get("remote_commands") or {}
+    favs = old.get("favorites", [])
+    if favorites is not None:
+        favs = favorites
+    cfg["remote_commands"] = {
+        "enabled": bool(enabled),
+        "controllers": _clean_name_list(controllers, 20),
+        "favorites": _clean_name_list(favs, 30),
+    }
     _save_config(cfg)
     return cfg["remote_commands"]
 
@@ -813,7 +826,9 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
                 self._json(403, {"error": "bad csrf token"})
                 return
-            rc = _save_command_config(bool(body.get("enabled")), body.get("controllers") or [])
+            rc = _save_command_config(bool(body.get("enabled")),
+                                      body.get("controllers") or [],
+                                      body.get("favorites"))
             _cmd_log("config", "remote command settings updated",
                      detail=("enabled" if rc.get("enabled") else "disabled"))
             self._json(200, _cmd_status())

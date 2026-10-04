@@ -258,14 +258,17 @@ If the radio only returns a generic stored name such as `private`, the transport
 channel hash to the desired label.
 
 **Remote Commands v1.** The **Remote commands** drawer enables or disables remote control
-and stores an allowlist of controller contact/channel names in `data/config.json`. New
-inbound messages from allowed controllers are scanned when the inbox is served or fetched.
-Supported commands are deterministic: `status`, `range test <target> every <seconds>`,
-`stop range`, numbered confirmation replies, and `cancel`. Free-text range requests never
-start immediately: they create a pending action and the app replies over MeshCore with
-numbered choices. A controller reply such as `1` executes the selected action. The command
-history is in-memory and visible in the drawer for the current server run. This is not the
-LLM feature; see §8.
+and stores an allowlist of controller contact/channel names in `data/config.json`. The UI
+shows known contacts/channels, lets the user star favorites for quick access, and persists
+both favorites and selected controllers across restart. Manual entry remains for a sender
+that is not currently in the radio contact cache. New inbound messages from allowed
+controllers are scanned when the inbox is served or fetched. Supported commands are
+deterministic: `status`, `range test <target> every <seconds>`, `stop range`, numbered
+confirmation replies, and `cancel`. Free-text range requests never start immediately:
+they create a pending action and the app replies over MeshCore with numbered choices. A
+controller reply such as `1` executes the selected action. The command history is
+in-memory and visible in the drawer for the current server run. This is not the LLM
+feature; see §8.
 
 **Contacts drawer.** The **Contacts** drawer has three flows: import a `meshcore://...`
 contact URI, manually add a contact by full 64-character public key plus display name and

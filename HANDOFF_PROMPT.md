@@ -49,8 +49,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   stats, next-ping countdown bar, live collapsed summary, and rolling log.
 - Remote Commands v1: deterministic allowlisted control from received MeshCore messages.
   The Remote commands drawer stores controller contact/channel names, shows command
-  history, and supports `status`, `range test`, `stop range`, numbered confirmation
-  replies and `cancel`. It intentionally has no LLM yet.
+  history, has persisted starred controller favorites, and supports `status`,
+  `range test`, `stop range`, numbered confirmation replies and `cancel`. It
+  intentionally has no LLM yet.
 - Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
   public key + display name + type, and export this node/contact URI.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
