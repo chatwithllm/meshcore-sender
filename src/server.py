@@ -409,6 +409,22 @@ def _send_command_reply(message, text):
         return False
 
 
+def _message_key(message):
+    raw = str(message.get("raw") or "").strip()
+    if raw:
+        return ("raw", raw)
+    return ("msg",
+            str(message.get("direction") or ""),
+            str(message.get("scope") or ""),
+            str(message.get("sender") or ""),
+            str(message.get("text") or "").strip(),
+            str(message.get("at") or ""))
+
+
+def _public_message(message):
+    return {k: v for k, v in message.items() if not str(k).startswith("_")}
+
+
 def _range_status_text():
     snap = _range_snapshot()
     if not snap.get("running"):
@@ -700,18 +716,13 @@ class Handler(BaseHTTPRequestHandler):
                 from transport_meshcore import _inbox as _live, _inbox_lock as _ilock
                 with _ilock:
                     _live_copy = list(_live)
-                # Dedup by (scope, text) — handles old CLI format vs new SDK format
-                _seen = set(
-                    ((x.get("scope") or ""), (x.get("text") or "").strip())
-                    for x in _store
-                )
+                _seen = set(_message_key(x) for x in _store)
                 _added = [_m for _m in _live_copy
-                          if ((_m.get("scope") or ""), (_m.get("text") or "").strip())
-                          not in _seen]
+                          if _message_key(_m) not in _seen]
                 if _added:
                     for _m in _added:
                         _process_remote_command(_m)
-                    _store.extend(_added)
+                    _store.extend(_public_message(_m) for _m in _added)
                     _store = _store[-300:]
                     try:
                         _os.makedirs(_os.path.dirname(_p), exist_ok=True)
@@ -839,15 +850,13 @@ class Handler(BaseHTTPRequestHandler):
                 _store = []
             from transport_meshcore import messages as _msgs
             _new, _e = _msgs()
-            _seen = set(
-                ((_m.get("scope") or ""), (_m.get("text") or "").strip())
-                for _m in _store
-            )
+            _seen = set(_message_key(_m) for _m in _store)
             for _m in _new:
-                if ((_m.get("scope") or ""), (_m.get("text") or "").strip()) not in _seen:
+                if _message_key(_m) not in _seen:
                     _m.setdefault("at", _now())
-                    _store.append(_m)
+                    _store.append(_public_message(_m))
                     _process_remote_command(_m)
+                    _seen.add(_message_key(_m))
             _store = _store[-300:]
             try:
                 _os.makedirs(os.path.dirname(_p), exist_ok=True)

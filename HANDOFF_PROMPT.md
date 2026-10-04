@@ -52,7 +52,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   history, has persisted starred controller favorites, and supports `status`,
   `range test`, `stop range`, numbered confirmation replies and `cancel`. It
   mirrors automatic replies into the related conversation so received commands and
-  app responses are visible in chat history. It intentionally has no LLM yet.
+  app responses are visible in chat history. Repeated same-text commands are allowed
+  after the short live-queue duplicate guard, so `Status` can be sent more than once.
+  It intentionally has no LLM yet.
 - Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
   public key + display name + type, and export this node/contact URI.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,

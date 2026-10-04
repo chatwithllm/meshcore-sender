@@ -270,7 +270,11 @@ controller reply such as `1` executes the selected action. Automatic command rep
 also mirrored into `inbox.json` as outbound chat messages, so a received `status` command
 and the app's response are visible in the conversation history instead of only in the
 radio send path. The command history is in-memory and visible in the drawer for the
-current server run. This is not the LLM feature; see §8.
+current server run. Repeated inbound messages are deduped by message identity, not only
+by visible text, so repeated commands such as `Status` from the same controller appear as
+new inbox entries and are processed again. A short live-queue guard still suppresses
+duplicate subscription/drain copies of the same radio event. This is not the LLM feature;
+see §8.
 
 **Contacts drawer.** The **Contacts** drawer has three flows: import a `meshcore://...`
 contact URI, manually add a contact by full 64-character public key plus display name and

@@ -221,10 +221,23 @@ def _route_info(path_len=None, path_hex=None, hash_mode=None, contacts=None) -> 
 
 def _add_inbox(scope: str, sender, text: str, direction: str = "in", **meta) -> None:
     ts = _now()
-    # raw excludes timestamp so drain + subscription don't create duplicates
-    raw = "%s|%s|%s|%s" % (direction, scope, sender or "", text)
+    received_at = time.time()
+    raw = "%s|%s|%s|%s|%d" % (direction, scope, sender or "", text, int(received_at * 1000))
     with _inbox_lock:
-        if not any(m.get("raw") == raw for m in _inbox):
+        duplicate_recent = False
+        for msg in _inbox[-20:]:
+            try:
+                age = received_at - float(msg.get("_received_at") or 0)
+            except (TypeError, ValueError):
+                age = 999
+            if (age <= 3
+                    and msg.get("direction") == direction
+                    and msg.get("scope") == scope
+                    and msg.get("sender") == sender
+                    and msg.get("text") == text):
+                duplicate_recent = True
+                break
+        if not duplicate_recent:
             item = {
                 "scope": scope,
                 "sender": sender,
@@ -232,6 +245,7 @@ def _add_inbox(scope: str, sender, text: str, direction: str = "in", **meta) -> 
                 "at": ts,
                 "direction": direction,
                 "raw": raw,
+                "_received_at": received_at,
             }
             item.update({k: v for k, v in meta.items() if v is not None})
             _inbox.append(item)
