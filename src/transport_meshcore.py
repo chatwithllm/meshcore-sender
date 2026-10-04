@@ -254,6 +254,7 @@ async def _connect_async():
         contact = mc.get_contact_by_key_prefix(pubkey) if pubkey else None
         name = (contact.get("adv_name") if contact else None) or pubkey[:8] or "unknown"
         _add_inbox(scope=name, sender=name, text=text, direction="in",
+                   pubkey_prefix=pubkey,
                    **_route_info(p.get("path_len"), p.get("path"),
                                  p.get("path_hash_mode"), mc.contacts))
 
@@ -569,10 +570,14 @@ async def _drain_queue_async(mc) -> None:
             text = (p.get("text") or "").strip()
             try:
                 contact = mc.get_contact_by_key_prefix(pubkey) if pubkey else None
+                if contact is None and pubkey:
+                    await mc.ensure_contacts()
+                    contact = mc.get_contact_by_key_prefix(pubkey)
                 name = (contact.get("adv_name") if contact else None) or pubkey[:8] or "unknown"
             except Exception:
                 name = pubkey[:8] or "unknown"
             _add_inbox(scope=name, sender=name, text=text, direction="in",
+                       pubkey_prefix=pubkey,
                        **_route_info(p.get("path_len"), p.get("path"),
                                      p.get("path_hash_mode"), mc.contacts))
         elif ev.type == EventType.CHANNEL_MSG_RECV:

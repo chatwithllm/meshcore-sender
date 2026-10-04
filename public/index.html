@@ -1519,20 +1519,31 @@ document.addEventListener('keydown', function (e) {
     })[0] || null;
   }
 
-  function threadIdForScope(scope){
+  function isKeyPrefix(value){
+    return /^[0-9a-f]{6,12}$/i.test(String(value || '').trim());
+  }
+
+  function unknownNodeLabel(value){
+    var s = String(value || '').trim();
+    return s ? ('Unknown node ' + s.toUpperCase()) : 'Unknown node';
+  }
+
+  function threadIdForScope(scope, pubkeyPrefix){
     var chanId = channelIdForScope(scope);
     if (chanId) return chanId;
-    var contact = findContactForScope(scope);
+    var contact = findContactForScope(pubkeyPrefix) || findContactForScope(scope);
     if (contact) return contact.id;
-    return 'dm:' + String(scope || '').trim();
+    return 'dm:' + String(pubkeyPrefix || scope || '').trim();
   }
 
   function displayName(c){
     if (!c) return '';
     if (c.id === 'chan:0') return 'Public channel';
     if (c.id && c.id.indexOf('chan:') === 0) return c.name || ('Channel ' + c.id.split(':')[1]);
-    var contact = findContactForScope(c.name) || findContactForScope((c.id || '').replace(/^dm:/, ''));
-    return (contact && contact.name) || c.name || (c.id || '').replace(/^dm:/, '');
+    var raw = (c.id || '').replace(/^dm:/, '');
+    var contact = findContactForScope(c.pubkey_prefix) || findContactForScope(c.name) || findContactForScope(raw);
+    var name = (contact && contact.name) || c.name || raw;
+    return isKeyPrefix(name) ? unknownNodeLabel(name) : name;
   }
 
   function kindLabel(c){
@@ -1594,11 +1605,12 @@ document.addEventListener('keydown', function (e) {
       if (_seen.has(key)) return;
       _seen.add(key);
       // scope → thread id
-      var tid = threadIdForScope(m.scope);
+      var tid = threadIdForScope(m.scope, m.pubkey_prefix);
       if (!threads[tid]) threads[tid] = [];
       threads[tid].push({
         dir: dir,
-        who: m.sender || (dir==='out' ? 'you' : displayName({id:tid, name:m.scope})),
+        who: m.sender && !isKeyPrefix(m.sender) ? m.sender
+            : (dir==='out' ? 'you' : displayName({id:tid, name:m.scope, pubkey_prefix:m.pubkey_prefix})),
         text: m.text||'',
         at: m.at || new Date().toTimeString().slice(0,8),
         acked: m.acked,
@@ -1610,8 +1622,8 @@ document.addEventListener('keydown', function (e) {
       changed = true;
       // ensure sidebar has this thread even if not in contacts list
       if (!contacts.find(function(c){return c.id===tid;})) {
-        var label = tid.startsWith('chan:') ? displayName({id:tid, name:m.scope}) : displayName({id:tid, name:m.scope||tid.slice(3)});
-        contacts.push({id:tid, name:label, kind: tid.startsWith('chan:') ? 'private' : 'node'});
+        var label = tid.startsWith('chan:') ? displayName({id:tid, name:m.scope}) : displayName({id:tid, name:m.scope||tid.slice(3), pubkey_prefix:m.pubkey_prefix});
+        contacts.push({id:tid, name:label, pubkey_prefix:m.pubkey_prefix, kind: tid.startsWith('chan:') ? 'private' : 'node'});
       }
     });
     return changed;

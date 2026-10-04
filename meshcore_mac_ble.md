@@ -224,7 +224,9 @@ do not stretch the page forever. Outgoing messages appear optimistically with se
 delivered/failure states. Sent route labels show hop count when known and open a right-side
 route inspector; saved messages can query `/api/route` for current hop details. The
 conversation sidebar tracks unread inbound messages in localStorage and shows a missed
-section/badges.
+section/badges. First-time direct messages may arrive with only a public-key prefix; the
+UI labels those as unknown nodes until the radio contact/advert cache can match the prefix
+to a name.
 
 **Repeater map.** A **Repeater map** drawer shows only repeaters with usable advertised
 GPS. It renders OpenStreetMap tiles locally in the browser, supports plus/minus and
