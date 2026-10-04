@@ -56,7 +56,7 @@
   /* ── app layout ── */
   html,body{height:100%;margin:0}
   body{display:flex;flex-direction:column}
-  main{flex:1;display:flex;flex-direction:column;max-width:860px;width:100%;
+  main{flex:1;display:flex;flex-direction:column;max-width:980px;width:100%;
        margin:0 auto;padding:14px 16px 0;box-sizing:border-box}
   h1{font-size:16px;font-weight:700;margin:0 0 1px}
   .sub{font-size:12px;color:var(--mut);margin:0 0 10px}
@@ -78,7 +78,7 @@
             border-radius:var(--radius);margin-bottom:10px;padding:0;overflow:hidden}
   #cv-panel > .dgroup{padding:10px 14px 8px;border-bottom:1px solid var(--line);
                       font-size:11px;letter-spacing:.09em;margin:0}
-  #cv-body{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr;overflow:hidden}
+  #cv-body{flex:1;min-height:0;display:grid;grid-template-columns:240px 1fr;overflow:hidden}
   @media(max-width:600px){#cv-body{grid-template-columns:1fr}}
   #cv-sidebar{overflow-y:auto}
   #cv-main{min-height:0;display:flex;flex-direction:column}
@@ -1844,6 +1844,7 @@ document.addEventListener('keydown', function (e) {
   var contacts = [];     // [{id, name, kind}]
   var _csrf = null;
   var _pollTimer = null;
+  var conversationFilter = '';
   var READ_KEY = 'mc.threadRead.v1';
   var readCounts = loadReadCounts();
 
@@ -1913,6 +1914,35 @@ document.addEventListener('keydown', function (e) {
     if (c.kind === 'repeater') return 'Repeater';
     if (c.kind === 'room') return 'Room';
     return 'Node';
+  }
+
+  function shortId(c){
+    if (!c || !c.id) return '';
+    if (c.id.indexOf('chan:') === 0) return c.id.replace('chan:', 'ch ');
+    var key = c.pubkey_prefix || String(c.id || '').replace(/^dm:/, '');
+    if (isKeyPrefix(key)) return key.slice(0, 8).toUpperCase();
+    return '';
+  }
+
+  function activeSubtitle(c){
+    if (!c) return '';
+    var parts = [kindLabel(c)];
+    var sid = shortId(c);
+    if (sid) parts.push(sid);
+    var count = (threads[c.id] || []).length;
+    if (count) parts.push(count + ' message' + (count === 1 ? '' : 's'));
+    return parts.filter(Boolean).join(' · ');
+  }
+
+  function setActiveHeader(){
+    var hdr = document.getElementById('cv-hdr');
+    if (!hdr) return;
+    if (!activeId) {
+      hdr.innerHTML = '<div><b>Select a conversation</b><span>Choose a contact or channel on the left.</span></div>';
+      return;
+    }
+    var c = contacts.find(function(x){return x.id===activeId;}) || {id:activeId, name:activeId};
+    hdr.innerHTML = '<div><b>'+esc(displayName(c))+'</b><span>'+esc(activeSubtitle(c))+'</span></div>';
   }
 
   function routeLabel(m) {
@@ -2027,31 +2057,43 @@ document.addEventListener('keydown', function (e) {
       var ha = (threads[a.id]||[]).length, hb = (threads[b.id]||[]).length;
       return (hb>0?1:0)-(ha>0?1:0) || String(displayName(a)).localeCompare(String(displayName(b)));
     });
+    var count = document.getElementById('cv-side-count');
+    if (count) count.textContent = sorted.length;
     renderMissed(sorted);
-    ul.innerHTML = sorted.map(function(c){
+    var counts = {};
+    sorted.forEach(function(c){
+      var title = displayName(c);
+      counts[title] = (counts[title] || 0) + 1;
+    });
+    var visible = sorted.filter(function(c){
+      var q = conversationFilter.trim().toLowerCase();
+      if (!q) return true;
+      return [displayName(c), kindLabel(c), shortId(c), c.id, c.name].join(' ').toLowerCase().indexOf(q) >= 0;
+    });
+    ul.innerHTML = visible.map(function(c){
       var unread = unreadCount(c.id);
       var last = threads[c.id] && threads[c.id].length
                  ? threads[c.id][threads[c.id].length-1] : null;
       var preview = last ? esc(last.text.slice(0,28))+(last.text.length>28?'…':'') : '';
       var active  = c.id === activeId ? ' cv-active' : '';
+      var title = displayName(c);
+      var idNote = counts[title] > 1 ? shortId(c) : '';
+      var meta = idNote;
       return '<div class="cv-row'+active+'" data-id="'+esc(c.id)+'">' +
-        '<div class="cv-name"><span>'+esc(displayName(c))+'</span>' +
+        '<div class="cv-name"><span>'+esc(title)+'</span>' +
+        '<span class="cv-kind">'+esc(kindLabel(c))+'</span>' +
         (unread ? '<span class="cv-badge">'+unread+'</span>' : '') + '</div>' +
-        '<div class="cv-meta">'+esc(kindLabel(c))+'</div>' +
+        (meta ? '<div class="cv-meta">'+esc(meta)+'</div>' : '') +
         (preview ? '<div class="cv-preview">'+preview+'</div>' : '') +
         '</div>';
-    }).join('');
+    }).join('') || '<div class="cv-empty cv-empty-list">No matching conversations.</div>';
     ul.querySelectorAll('.cv-row').forEach(function(el){
       el.addEventListener('click',function(){
         activeId = el.dataset.id;
         markRead(activeId);
         renderSidebar();
         renderThread(true);
-        var hdr = document.getElementById('cv-hdr');
-        if (hdr) {
-          var c = contacts.find(function(x){return x.id===activeId;});
-          hdr.textContent = c ? displayName(c) : activeId;
-        }
+        setActiveHeader();
       });
     });
   }
@@ -2092,11 +2134,7 @@ document.addEventListener('keydown', function (e) {
         markRead(activeId);
         renderSidebar();
         renderThread(true);
-        var hdr = document.getElementById('cv-hdr');
-        if (hdr) {
-          var c = contacts.find(function(x){return x.id===activeId;});
-          hdr.textContent = c ? displayName(c) : activeId;
-        }
+        setActiveHeader();
       });
     });
   }
@@ -2156,6 +2194,7 @@ document.addEventListener('keydown', function (e) {
   function renderThread(forceBottom){
     var box = document.getElementById('cv-thread');
     if (!box) return;
+    setActiveHeader();
     if (!activeId) { box.innerHTML='<div class="cv-empty">Select a contact to start.</div>'; return; }
     var msgs = threads[activeId] || [];
     if (!msgs.length){ box.innerHTML='<div class="cv-empty">No messages yet.</div>'; return; }
@@ -2264,9 +2303,13 @@ document.addEventListener('keydown', function (e) {
       '<div class="dgroup" style="margin-bottom:10px">Conversations</div>' +
       '<div id="cv-body">' +
         '<div id="cv-sidebar">' +
+          '<div id="cv-side-head">' +
+            '<div><b>Inbox</b><span id="cv-side-count">0</span></div>' +
+            '<button type="button" id="cv-fetch" class="ghost">Fetch</button>' +
+          '</div>' +
+          '<input id="cv-search" type="text" placeholder="Search conversations">' +
           '<div id="cv-missed" class="hide"></div>' +
           '<div id="cv-list"></div>' +
-          '<button type="button" id="cv-fetch" class="chip" style="margin-top:8px;width:100%">Fetch new</button>' +
         '</div>' +
         '<div id="cv-main">' +
           '<div id="cv-chat-stack">' +
@@ -2288,6 +2331,10 @@ document.addEventListener('keydown', function (e) {
 
     document.getElementById('cv-send').onclick = sendReply;
     document.getElementById('cv-fetch').onclick = function(){ fetchMessages(true); };
+    document.getElementById('cv-search').addEventListener('input', function(e){
+      conversationFilter = e.target.value || '';
+      renderSidebar();
+    });
     document.getElementById('cv-compose').addEventListener('keydown',function(e){
       if (e.key==='Enter' && (e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); }
     });
@@ -2361,18 +2408,25 @@ document.addEventListener('keydown', function (e) {
     '.cmd-row{border-bottom:1px solid #ffffff12;padding:5px 0;font-size:12px;color:var(--ink)}' +
     '.cmd-row small{display:block;color:var(--mut);margin-top:2px}' +
     '.cmd-time{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8fb8d8;margin-right:6px}' +
-    '#cv-panel{height:clamp(420px,calc(100vh - 220px),620px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
-    '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:210px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
+    '#cv-panel{height:clamp(460px,calc(100vh - 220px),680px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
+    '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:240px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
     '@media(max-height:650px){#cv-panel{height:420px}}' +
     '@media(max-width:600px){#cv-panel{height:calc(100vh - 190px);min-height:360px}#cv-body{grid-template-columns:1fr}#cv-sidebar{border-right:none;border-bottom:1px solid var(--line);max-height:150px}}' +
-    '#cv-sidebar{background:#0c0e12;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column}' +
+    '#cv-sidebar{background:#0c0e12;border-right:1px solid var(--line);padding:8px;display:flex;flex-direction:column;gap:8px}' +
+    '#cv-side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 0 0}' +
+    '#cv-side-head b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut)}' +
+    '#cv-side-head span{display:block;margin-top:1px;color:#737d8f;font-size:11px}' +
+    '#cv-side-head button{padding:5px 9px;font-size:12px;border-radius:6px}' +
+    '#cv-search{width:100%;background:#11151d;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-size:12px}' +
+    '#cv-search:focus{outline:none;border-color:var(--accent)}' +
     '#cv-list{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:3px}' +
-    '.cv-row{padding:8px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent}' +
+    '.cv-row{padding:9px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;background:transparent}' +
     '.cv-row:hover{background:#1e222b}' +
     '.cv-row.cv-active{background:#1a2236;border-color:#2e6fb5;box-shadow:inset 2px 0 0 var(--accent)}' +
-    '.cv-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;justify-content:space-between}' +
+    '.cv-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:6px}' +
     '.cv-name span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}' +
-    '.cv-meta{font-size:9px;line-height:1;text-transform:uppercase;letter-spacing:.08em;color:#758094;margin-top:4px}' +
+    '.cv-kind{font-size:9px;line-height:1;text-transform:uppercase;letter-spacing:.08em;color:#8b93a3;border:1px solid #ffffff1f;border-radius:4px;padding:2px 5px;font-weight:800}' +
+    '.cv-meta{font-size:10px;line-height:1;color:#758094;margin-top:5px}' +
     '.cv-preview{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}' +
     '.cv-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--accent);color:#08121f;font-size:11px;font-weight:800;line-height:1;flex:0 0 auto}' +
     '#cv-missed{border:1px solid #ffffff1f;border-radius:6px;padding:7px;margin-bottom:8px;background:#121722;flex:0 0 auto}' +
@@ -2395,7 +2449,9 @@ document.addEventListener('keydown', function (e) {
     '.cv-hop-name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.cv-hop-hash{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mut);margin-top:2px;word-break:break-all}' +
     '.cv-route-empty{font-size:12px;color:var(--mut);line-height:1.4}' +
-    '#cv-hdr{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);padding:8px 12px;border-bottom:1px solid var(--line)}' +
+    '#cv-hdr{padding:10px 12px;border-bottom:1px solid var(--line);background:#181c24}' +
+    '#cv-hdr b{display:block;font-size:13px;color:var(--ink);line-height:1.25}' +
+    '#cv-hdr span{display:block;margin-top:2px;font-size:11px;color:var(--mut);font-weight:600}' +
     '#cv-thread{flex:1;min-height:0;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;scrollbar-gutter:stable}' +
     '.cv-msg{display:flex;flex-direction:column;max-width:80%}' +
     '.cv-in{align-self:flex-start}' +
@@ -2413,6 +2469,7 @@ document.addEventListener('keydown', function (e) {
     '.cv-ack-bad{color:#e88d7a;font-weight:650}' +
     '.cv-route{color:#8b93a3;opacity:.8}' +
     '.cv-empty{font-size:12px;color:var(--mut);padding:20px;text-align:center}' +
+    '.cv-empty-list{padding:12px 6px;text-align:left}' +
     '#cv-compose-row{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex:0 0 auto}' +
     '#cv-compose{flex:1;min-height:58px;max-height:90px;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:inherit;resize:vertical}' +
     '#cv-compose:focus{outline:none;border-color:var(--accent)}' +

@@ -233,7 +233,9 @@ route inspector; saved messages can query `/api/route` for current hop details. 
 conversation sidebar tracks unread inbound messages in localStorage and shows a missed
 section/badges. First-time direct messages may arrive with only a public-key prefix; the
 UI labels those as unknown nodes until the radio contact/advert cache can match the prefix
-to a name.
+to a name. The current UI pass widens the console, adds conversation search, moves Fetch
+into the inbox header, shows target type as a compact badge, and only shows a short id
+when duplicate display names need disambiguation.
 
 **Repeater map.** A **Repeater map** drawer shows only repeaters with usable advertised
 GPS. It renders OpenStreetMap tiles locally in the browser, supports plus/minus and

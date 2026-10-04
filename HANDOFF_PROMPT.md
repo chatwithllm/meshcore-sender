@@ -40,7 +40,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
 - Receiving: sync_msgs drains the radio's queue, parsed into a persistent store and
   shown as per-conversation threads in the UI (newest first, your own sends included).
 - Chat windows are bounded-height with internal scrolling; missed/unread counts show in
-  the conversation sidebar.
+  the conversation sidebar. Current UI pass widened the console, added conversation
+  search, moved Fetch into the inbox header, shows target type as a compact badge, and
+  adds a short id only when duplicate display names need disambiguation.
 - Repeater map: repeaters with advertised GPS are shown on an OpenStreetMap-backed map
   with pan, wheel zoom, marker popup, selected-row sync and "Open full map". Marker
   selection and right-panel selection are both supported; popup close is handled on
