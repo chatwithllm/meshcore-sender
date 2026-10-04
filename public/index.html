@@ -1069,25 +1069,27 @@ document.addEventListener('keydown', function (e) {
       '<div class="dgroup" style="margin-bottom:8px">Range test</div>' +
       '<div class="rt-layout">' +
         '<div class="rt-controls">' +
-          '<div class="rt-form-grid">' +
-            '<div><label style="font-size:11px;display:block;margin-bottom:4px">Target</label>' +
-              '<input id="rt-target" type="hidden">' +
-              '<input id="rt-search" type="text" placeholder="Search nodes or channels…" style="width:100%;margin-bottom:6px">' +
-              '<div id="rt-filters" class="chips" style="margin-bottom:6px">' +
-                '<button type="button" class="chip on" data-filter="all">All</button>' +
-                '<button type="button" class="chip" data-filter="node">Nodes</button>' +
-                '<button type="button" class="chip" data-filter="repeater">Repeaters</button>' +
-                '<button type="button" class="chip" data-filter="room">Rooms</button>' +
-                '<button type="button" class="chip" data-filter="chan">Channels</button>' +
-              '</div>' +
-              '<div id="rt-target-list" class="rt-target-list"></div>' +
-              '<div id="rt-target-note" class="note" style="margin-top:6px"></div></div>' +
+          '<div class="rt-config-grid">' +
             '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
               '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
             '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
               '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%"></div>' +
           '</div>' +
-          '<div class="row" style="margin-bottom:10px">' +
+          '<div class="rt-target-picker">' +
+            '<label>Targets</label>' +
+            '<input id="rt-target" type="hidden">' +
+            '<input id="rt-search" type="text" placeholder="Search nodes or channels…" style="width:100%;margin-bottom:6px">' +
+            '<div id="rt-filters" class="chips" style="margin-bottom:6px">' +
+              '<button type="button" class="chip on" data-filter="all">All</button>' +
+              '<button type="button" class="chip" data-filter="node">Nodes</button>' +
+              '<button type="button" class="chip" data-filter="repeater">Repeaters</button>' +
+              '<button type="button" class="chip" data-filter="room">Rooms</button>' +
+              '<button type="button" class="chip" data-filter="chan">Channels</button>' +
+            '</div>' +
+            '<div id="rt-target-list" class="rt-target-list"></div>' +
+            '<div id="rt-target-note" class="note" style="margin-top:6px"></div>' +
+          '</div>' +
+          '<div class="rt-actions row">' +
             '<button id="rt-start">Start</button>' +
             '<button id="rt-stop" class="ghost" disabled>Stop</button>' +
             '<span id="rt-stats" style="font-size:12px;color:var(--mut);margin-left:auto"></span>' +
@@ -1379,16 +1381,20 @@ document.addEventListener('keydown', function (e) {
     '.dname{flex:1 1 auto;min-width:5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.dbadge,.star,.did{flex:0 0 auto}' +
     '.dempty{font-size:12px;opacity:.5;line-height:1.4;padding:2px 0 6px}' +
-    '.rt-target-list{max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:4px;display:flex;flex-direction:column;gap:3px}' +
+    '.rt-target-list{max-height:210px;overflow:auto;border:1px solid var(--line);border-radius:6px;background:#0c0e12;padding:4px;display:flex;flex-direction:column;gap:3px}' +
     '.rt-target{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;color:var(--ink);border:0;border-radius:5px;padding:6px 8px;text-align:left;cursor:pointer}' +
     '.rt-target:hover{background:#1e222b}' +
     '.rt-target.active{background:#1a2236;outline:1px solid var(--accent)}' +
     '.rt-target-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;font-size:13px}' +
     '.rt-target-kind{flex:0 0 auto;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);border:1px solid #ffffff26;border-radius:4px;padding:1px 5px}' +
     '.rt-empty{font-size:12px;color:var(--mut);padding:8px}' +
-    '.rt-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:12px;align-items:start}' +
-    '.rt-form-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(160px,.8fr) minmax(120px,.6fr);gap:8px;margin-bottom:10px}' +
-    '@media(max-width:860px){.rt-layout,.rt-form-grid{grid-template-columns:1fr}}' +
+    '.rt-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}' +
+    '.rt-controls{min-width:0}' +
+    '.rt-config-grid{display:grid;grid-template-columns:minmax(160px,1fr) minmax(120px,.55fr);gap:8px;margin-bottom:10px}' +
+    '.rt-target-picker{margin-bottom:10px}' +
+    '.rt-target-picker label{font-size:11px;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}' +
+    '.rt-actions{align-items:center;margin-bottom:10px}' +
+    '@media(max-width:860px){.rt-layout,.rt-config-grid{grid-template-columns:1fr}}' +
     '.rt-side{border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:10px;min-height:150px}' +
     '.rt-clock{margin:-2px 0 10px;color:var(--mut);font-size:12px}' +
     '.rt-clock-label{margin-bottom:5px}' +

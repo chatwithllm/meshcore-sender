@@ -210,8 +210,6 @@ async def _connect_async():
             name = ("Public channel (%s)" % raw_name) if raw_name else "Public channel"
         else:
             name = raw_name or ("Channel %d" % idx)
-            if name.lower() == "private":
-                name = "Private channel"
         channels.append({
             "id": "chan:%d" % idx,
             "name": name,

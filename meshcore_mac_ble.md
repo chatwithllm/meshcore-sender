@@ -2,7 +2,7 @@
 
 **Status:** working end to end for sending, receiving, repeater mapping and range testing.
 Remaining work is §8; read §9 and §11 before promising anything.
-**Last updated:** 2026-10-04 (after repeater map interaction fixes and multi-target range test)
+**Last updated:** 2026-10-04 (after Range Test layout cleanup and channel-name preservation)
 **Project:** `~/dev/active/meshcore-sender/` (renamed from `meshtastic-sender`)
 
 This file is the handoff. It records what works, what is broken, and the facts that took
@@ -234,10 +234,13 @@ handling. It is not a routing map; it visualizes advertised repeater locations.
 
 **Range test.** The range test drawer supports selecting one or more nodes/channels,
 searching/filtering targets, and changing the active target list while the test is running
-(`/api/range/targets`). Each interval cycle sends to the current target list. Direct
-messages use ACKs as delivery proof; channels are logged as broadcasts with no ACK
-expected. The UI shows total sent/acked %, per-target sent/acked/missed stats in a right
-panel, a next-ping countdown bar, a live collapsed header summary and a rolling log.
+(`/api/range/targets`). The layout keeps prefix/interval controls together, gives the
+target picker the main width, and uses the right panel for per-target stats. Each interval
+cycle sends to the current target list. Direct messages use ACKs as delivery proof;
+channels are treated as sent when the radio accepts the broadcast. The UI shows total
+sent/acked %, per-target sent/acked/missed stats, a next-ping countdown bar, a live
+collapsed header summary and a rolling log. Channel labels preserve the radio-provided
+channel name when one is available instead of rewriting it to a generic private label.
 
 ---
 
