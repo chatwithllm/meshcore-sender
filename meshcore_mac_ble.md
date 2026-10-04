@@ -303,14 +303,28 @@ public key, plus a name; and a per-contact "show URI". Maps to `import_contact` 
 services themselves. Loopback by default; wider exposure means Tailscale Serve, never a
 public route.
 
-**AI / remote command control — parked until user says "Bring Ai pending work".**
-Idea: allow a designated contact or channel to control this node by sending messages
-over MeshCore. The safe first version should be a deterministic command inbox with an
-allowlist, pending-command confirmation, `status`, `cancel`, and range-test start/stop
-actions. LLM support can come later as an optional interpreter for messy text, with
-providers such as OpenAI, Claude, Google, Grok, DeepSeek, and others configured by API
-key. The LLM should never be the safety boundary; it should propose structured intents
-that still go through the same confirmation/state machine.
+**Remote command control / AI interpreter — next planned work.**
+User asked to resume the parked AI work on 2026-10-04. Build this in two layers:
+
+1. **Remote Commands v1, deterministic and no LLM required.** Allow a designated
+   contact or channel to control this node by sending MeshCore messages. Add config for
+   allowed controller senders/channels, then scan received messages for a small command
+   set: `status`, `range test`, `stop range`, and `cancel`. Commands should create a
+   pending action and reply over MeshCore with numbered confirmation choices; do not run
+   range tests immediately from free text. A controller reply such as `1` confirms, and
+   `cancel` clears pending work. Log command history in the UI.
+
+2. **AI as optional interpreter after v1 works.** LLM support can translate messy text
+   into a structured intent, with providers such as OpenAI, Claude, Google/Gemini, Grok,
+   DeepSeek, and others configured by API key. The LLM must never be the safety boundary:
+   it proposes `{command, targets, interval_sec}` style intents, and the deterministic
+   allowlist + confirmation state machine still decides whether anything runs.
+
+Implementation sketch: add server-side command state near the range-test state, persist
+controller settings in `config.json` (not secrets), add endpoints for command settings and
+history, hook message ingestion/fetch to evaluate new inbound messages, use existing
+`transport_meshcore.send()` to send confirmation/status replies, and reuse the existing
+range-test start/stop internals rather than duplicating scheduling logic.
 
 ---
 

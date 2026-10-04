@@ -57,9 +57,13 @@ NOT BUILT — NEXT TASKS IN ORDER
 3. Housekeeping: README, .gitignore, remove leftover "meshtastic" names in docstrings/env,
    delete the dead public/destinations.js.
 
-PARKED UNTIL USER SAYS "Bring Ai pending work"
-- AI / remote command control by designated MeshCore sender/channel. See §8 in the handoff
-  doc. Start with deterministic allowlist + confirmation flow; add LLM interpretation later.
+NEXT PLANNED WORK — REMOTE COMMAND CONTROL / AI INTERPRETER
+- User resumed the AI pending work on 2026-10-04. See §8 in the handoff doc.
+- Build Remote Commands v1 first, without an LLM: configured controller contact/channel,
+  inbound command scan, pending action state, numbered confirmation replies, `status`,
+  `cancel`, `range test`, and `stop range`.
+- Add LLM providers only after that works. LLMs may parse messy text into structured
+  intents, but the allowlist + confirmation state machine remains the safety boundary.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
