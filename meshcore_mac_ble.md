@@ -383,6 +383,11 @@ AI provider calls retry once for transient network/server errors, and DeepSeek/O
 request JSON-formatted output. Common command phrasings should still be covered by local
 parsers first; AI is a fallback for fuzzier wording, not the only path to execution.
 
+Deployment note: after rebuilding and copying `MeshCore Sender.app` into `/Applications`,
+quit and reopen MeshCore Sender before testing remote commands. The browser window can keep
+talking to the old Python server process until the app is restarted, which makes new parser
+fixes look like they did not work.
+
 ---
 
 ## 9. The verification gap (read before promising anything)

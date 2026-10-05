@@ -94,6 +94,9 @@ AI INTERPRETER STATUS
 - Command history now persists to `command_history.json`; use it for AI/remote-command failures
   after restart. AI provider calls retry once on transient network/server errors, and
   DeepSeek/OpenAI requests include JSON response-format hints.
+- After rebuilding/copying the Mac app, quit and reopen MeshCore Sender before testing. If
+  the old app process is still running, Safari/app UI may receive new radio messages while
+  remote-command parser fixes are not active yet.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
