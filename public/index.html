@@ -1288,12 +1288,16 @@ document.addEventListener('keydown', function (e) {
     if (!ta || document.getElementById('tmpl-row')) return;
     var row = document.createElement('div');
     row.id = 'tmpl-row'; row.className = 'chips';
-    [['RT {time}','RT (time)'], ['Radio check','Radio check'],
-     ['Ping - please ack','Ping'], ['Range test - reply if you copy','Range test'],
-     [null,'Clear']].forEach(function(t){
+    [['RT {time}','RT (time)','message'], ['Radio check','Radio check','message'],
+     ['Ping - please ack','Ping','message'], ['', 'Range test', 'range'],
+     [null,'Clear','message']].forEach(function(t){
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'chip'; b.textContent = t[1];
       b.onclick = function(){
+        if (t[2] === 'range') {
+          openRangeToolFromCompose();
+          return;
+        }
         ta.value = t[0]
           ? t[0].replace('{time}', new Date().toTimeString().slice(0,8)) : '';
         ta.focus();
@@ -1305,6 +1309,25 @@ document.addEventListener('keydown', function (e) {
   }
   setTimeout(addTemplates, 500);
   document.addEventListener('click', function(){ setTimeout(addTemplates, 500); }, true);
+
+  function openRangeToolFromCompose(){
+    if (window.__activateTool) window.__activateTool('drawer-range');
+    setTimeout(function(){
+      addRangeTest();
+      var checked = Array.prototype.slice.call(document.querySelectorAll('#targets input:checked'))
+        .map(function(c){ return c.value; })
+        .filter(function(v){ return v && v !== 'public'; });
+      if (checked.length) {
+        RT_SELECTED = checked.slice();
+        rtSetHidden();
+      }
+      var interval = document.getElementById('rt-interval');
+      if (interval && !interval.value) interval.value = '30';
+      renderRangeTargets();
+      var search = document.getElementById('rt-search');
+      if (search) search.focus();
+    }, 80);
+  }
 
   // INBOX: sync_msgs CONSUMES the device queue, so messages are accumulated
   // client-side and deduped by content. Auto-check is 30s because every check
@@ -1546,7 +1569,13 @@ document.addEventListener('keydown', function (e) {
             '<div><label style="font-size:11px;display:block;margin-bottom:4px">Prefix</label>' +
               '<input id="rt-prefix" type="text" value="ping" style="width:100%"></div>' +
             '<div><label style="font-size:11px;display:block;margin-bottom:4px">Interval (sec)</label>' +
-              '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%"></div>' +
+              '<input id="rt-interval" type="number" value="30" min="5" max="300" style="width:100%">' +
+              '<div id="rt-interval-chips" class="chips rt-interval-chips" aria-label="Range test interval">' +
+                '<button type="button" class="chip" data-sec="10">10s</button>' +
+                '<button type="button" class="chip on" data-sec="30">30s</button>' +
+                '<button type="button" class="chip" data-sec="60">1m</button>' +
+                '<button type="button" class="chip" data-sec="300">5m</button>' +
+              '</div></div>' +
           '</div>' +
           '<div class="rt-target-picker">' +
             '<label>Targets</label>' +
@@ -1591,6 +1620,22 @@ document.addEventListener('keydown', function (e) {
     inbox.parentElement.appendChild(card);
     document.getElementById('rt-start').onclick = rangeStart;
     document.getElementById('rt-stop').onclick = rangeStop;
+    var intervalInput = document.getElementById('rt-interval');
+    function syncIntervalChips(){
+      var val = String(intervalInput && intervalInput.value || '30');
+      document.querySelectorAll('#rt-interval-chips .chip').forEach(function(btn){
+        btn.classList.toggle('on', String(btn.dataset.sec) === val);
+      });
+    }
+    if (intervalInput) intervalInput.oninput = syncIntervalChips;
+    document.querySelectorAll('#rt-interval-chips .chip').forEach(function(btn){
+      btn.onclick = function(){
+        if (intervalInput) {
+          intervalInput.value = btn.dataset.sec || '30';
+          intervalInput.dispatchEvent(new Event('input', {bubbles:true}));
+        }
+      };
+    });
     document.getElementById('rt-search').oninput = function(){
       RT_QUERY = this.value || '';
       renderRangeTargets();
@@ -1724,7 +1769,10 @@ document.addEventListener('keydown', function (e) {
       var prefixInput = document.getElementById('rt-prefix');
       var intervalInput = document.getElementById('rt-interval');
       if (prefixInput && s.prefix) prefixInput.value = s.prefix;
-      if (intervalInput && s.interval) intervalInput.value = s.interval;
+      if (intervalInput && s.interval) {
+        intervalInput.value = s.interval;
+        intervalInput.dispatchEvent(new Event('input', {bubbles:true}));
+      }
     }
     var startBtn = document.getElementById('rt-start');
     var stopBtn  = document.getElementById('rt-stop');
@@ -2061,6 +2109,7 @@ document.addEventListener('keydown', function (e) {
       });
       try { localStorage.setItem('mc.activeTool.v1', id); } catch(e) {}
     }
+    window.__activateTool = activate;
     tabs.forEach(function(tab){
       tab.dataset.bound = '1';
       tab.setAttribute('role', 'tab');
@@ -2152,6 +2201,8 @@ document.addEventListener('keydown', function (e) {
     '.rt-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}' +
     '.rt-controls{min-width:0}' +
     '.rt-config-grid{display:grid;grid-template-columns:minmax(160px,1fr) minmax(120px,.55fr);gap:8px;margin-bottom:10px}' +
+    '.rt-interval-chips{margin:6px 0 0;gap:5px}' +
+    '.rt-interval-chips .chip{padding:3px 8px;font-size:11px}' +
     '.rt-target-picker{margin-bottom:10px}' +
     '.rt-target-picker label{font-size:11px;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}' +
     '.rt-target-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px}' +
@@ -2213,7 +2264,7 @@ document.addEventListener('keydown', function (e) {
     '.map-row:hover,.map-row.active{background:#1e222b}' +
     '.map-row.active{outline:1px solid #4da3ff}' +
     '.map-row small{display:block;color:var(--mut);font-size:11px;margin-top:2px}' +
-    '@media(max-width:520px){.dgrid{grid-template-columns:1fr}.drow{font-size:12px;padding:5px 0}.chips{gap:5px;margin-bottom:8px}.chip{padding:5px 9px}.rt-layout{gap:10px}.rt-config-grid{gap:8px}.rt-target-list{max-height:190px}.rt-target{padding:8px 9px}.rt-actions{gap:8px}.rt-actions button{min-width:66px}.rt-stat{font-size:12px}.rt-progress-label{font-size:12px}.rt-target-tools{gap:7px}.rt-sort{align-self:stretch;justify-content:space-between}.rt-log{font-size:11px}.map-wrap{gap:9px}.map-stage{height:300px!important}.map-list{max-height:190px}.map-row{padding:8px 9px}.map-popup{max-width:220px}.map-selected{font-size:11px}}';
+    '@media(max-width:520px){.dgrid{grid-template-columns:1fr}.drow{font-size:12px;padding:5px 0}.chips{gap:5px;margin-bottom:8px}.chip{padding:5px 9px}.rt-layout{gap:10px}.rt-config-grid{gap:8px}.rt-interval-chips{margin-bottom:0}.rt-interval-chips .chip{padding:5px 9px}.rt-target-list{max-height:190px}.rt-target{padding:8px 9px}.rt-actions{gap:8px}.rt-actions button{min-width:66px}.rt-stat{font-size:12px}.rt-progress-label{font-size:12px}.rt-target-tools{gap:7px}.rt-sort{align-self:stretch;justify-content:space-between}.rt-log{font-size:11px}.map-wrap{gap:9px}.map-stage{height:300px!important}.map-list{max-height:190px}.map-row{padding:8px 9px}.map-popup{max-width:220px}.map-selected{font-size:11px}}';
   document.head.appendChild(st);
 })();
 
