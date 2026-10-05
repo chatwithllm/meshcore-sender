@@ -1,8 +1,8 @@
 # MeshCore Sender
 
-Local-only web UI for a MeshCore radio connected over BLE. It sends direct messages,
-channel messages, receives inbox updates, runs range tests, maps repeaters with GPS, and
-supports deterministic remote command control from an allowlisted contact or channel.
+Web UI for a MeshCore radio connected over BLE. It sends direct messages, channel messages,
+receives inbox updates, runs range tests, maps repeaters with GPS, and supports deterministic
+remote command control from an allowlisted contact or channel.
 
 ## Run locally
 
@@ -16,12 +16,14 @@ Then open:
 http://127.0.0.1:8788
 ```
 
-The app binds to loopback only. Do not expose it publicly. For remote access, use a
-tailnet-only path such as Tailscale Serve.
+Manual source runs bind to loopback by default. The packaged Mac app starts in LAN mode so
+you can use it from another device on the same trusted home/private network. Do not expose
+it to the public internet or public tunnels.
 
 ## Useful environment variables
 
 - `PORT`: defaults to `8788`
+- `MESHCORE_HOST` or `HOST`: defaults to `127.0.0.1`; use `0.0.0.0` for LAN access
 - `DATA_DIR`: defaults to `./data`
 - `MESHCORE_ADDR`: BLE UUID of the MeshCore radio
 - `MESHCORE_TIMEOUT`: radio command timeout in seconds

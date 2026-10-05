@@ -6,7 +6,7 @@ Stdlib only, on purpose: no pip install step, so it runs on this Mac as-is.
 Transport is handled by the MeshCore Python SDK through transport_meshcore.py.
 
 Run:  python3 src/server.py            # http://127.0.0.1:8788
-Env:  PORT, DATA_DIR, MESHCORE_ADDR, MESHCORE_TIMEOUT
+Env:  PORT, HOST/MESHCORE_HOST, DATA_DIR, MESHCORE_ADDR, MESHCORE_TIMEOUT
 """
 import hashlib
 import hmac
@@ -27,6 +27,7 @@ AUTH = os.path.join(DATA, "auth.json")       # passphrase hash, mode 0600
 AI_CONFIG = os.path.join(DATA, "ai.json")    # optional LLM provider key, mode 0600
 COMMAND_HISTORY = os.path.join(DATA, "command_history.json")
 PORT = int(os.environ.get("PORT", "8788"))
+HOST = os.environ.get("MESHCORE_HOST") or os.environ.get("HOST") or "127.0.0.1"
 TIMEOUT = int(os.environ.get("SEND_TIMEOUT", "45"))
 
 _sessions = {}          # token -> {"exp": ts, "csrf": str}
@@ -1725,10 +1726,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     _load_config()
+    shown_host = "127.0.0.1" if HOST in ("0.0.0.0", "::") else HOST
     if not _auth_set():
-        print("first run: open http://127.0.0.1:%d/ and set a passphrase" % PORT)
-    print("meshcore-sender on http://127.0.0.1:%d  (data: %s)" % (PORT, DATA))
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+        print("first run: open http://%s:%d/ and set a passphrase" % (shown_host, PORT))
+    print("meshcore-sender on http://%s:%d  (bind: %s, data: %s)" % (shown_host, PORT, HOST, DATA))
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

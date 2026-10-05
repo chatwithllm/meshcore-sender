@@ -71,7 +71,7 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   messy controller text, but numbered confirmation still controls execution.
 - Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
   public key + display name + type, and export this node/contact URI.
-- Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
+- Flood-advert button; message templates, Enter-to-submit login, LAN-capable Mac app binding,
   session cookie + CSRF.
 
 NOT BUILT — NEXT TASKS IN ORDER
@@ -103,12 +103,16 @@ AI INTERPRETER STATUS
   requires numbered confirmation before scanning.
 - Public/channel conversations now show a broadcast delivery warning plus quick actions to
   mention the last sender publicly or try direct when a matching contact exists.
+- LAN mode: `src/server.py` defaults to localhost, but honors `MESHCORE_HOST`/`HOST`.
+  The packaged Mac wrapper now sets `MESHCORE_HOST=0.0.0.0`, keeps local health/open-browser
+  on `127.0.0.1`, and has a menu item to copy `http://<Mac-IP>:8788`.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
   or keys. The passphrase is theirs and was set by them.
-- Loopback only. Never bind 0.0.0.0. Never Tailscale Funnel, ngrok or Cloudflare. Remote
-  access = `tailscale serve`, tailnet-only.
+- Do not expose this app to the public internet. LAN binding is allowed for the packaged
+  Mac app per the user's request, but keep it on trusted home/private LANs. Never use
+  Tailscale Funnel, ngrok, Cloudflare tunnels, or public port forwarding for this app.
 - Auto-start / service configuration is STAGED for the user to load, never installed.
 - Transport code fails loudly or not at all — never swallow an error.
 

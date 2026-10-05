@@ -26,7 +26,7 @@ hours to establish so nobody rediscovers them.
 | Host | Mac mini, user `assistant` |
 | Client | `meshcore-cli` at `~/.local/bin/meshcore-cli` (uv-installed) |
 | CLI source | `~/.local/share/uv/tools/meshcore-cli/lib/python3.11/site-packages/meshcore_cli/meshcore_cli.py` — **read this when the docs and reality disagree** |
-| Our app | `~/dev/active/meshcore-sender/` → `http://127.0.0.1:8788` |
+| Our app | `~/dev/active/meshcore-sender/` → `http://127.0.0.1:8788`; packaged Mac app also binds on LAN |
 
 Reference material: `~/dev/GPTMeshApp/meshcore-setup/` (`cli_commands.md`,
 `companion_protocol.md`, firmware, `MyMesh.h`).
@@ -155,7 +155,8 @@ filename allowlist first.
 ```bash
 cd ~/dev/active/meshcore-sender && python3 src/server.py   # → http://127.0.0.1:8788
 ```
-Env: `PORT` (8788), `MESHCORE_ADDR` (defaults to the UUID), `MESHCORE_CLI`,
+Env: `PORT` (8788), `MESHCORE_HOST`/`HOST` (defaults to `127.0.0.1`; use `0.0.0.0` for LAN),
+`MESHCORE_ADDR` (defaults to the UUID), `MESHCORE_CLI`,
 `MESHCORE_TIMEOUT` (30), `DATA_DIR`, `MESHCORE_SDK_SITE` (optional SDK path override).
 
 **Routes**
@@ -398,6 +399,12 @@ adverts are mesh-wide traffic.
 Public-channel note: channel messages are broadcasts, not direct conversations. The chat UI
 shows a broadcast warning on channel threads and provides quick actions to mention the last
 sender publicly or switch to a direct contact when that sender is known.
+
+LAN note: the packaged Mac app starts the server with `MESHCORE_HOST=0.0.0.0`, so other
+devices on the same LAN can open `http://<Mac-IP>:8788`. The menu bar app includes
+**Copy LAN URL**. The app still requires the MeshCore Sender passphrase; keep this on trusted
+home/private LANs only. Running `python3 src/server.py` directly remains localhost-only unless
+`MESHCORE_HOST=0.0.0.0` is set.
 
 ---
 
