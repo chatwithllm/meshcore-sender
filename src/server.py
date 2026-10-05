@@ -285,8 +285,8 @@ def _public_ai_config():
         "provider": cfg.get("provider") or "openai",
         "model": cfg.get("model") or "",
         "key_saved": bool(cfg.get("api_key")),
-        "mode": "pending",
-        "note": "AI parser is configured but not wired into command execution yet.",
+        "mode": "parse_only",
+        "note": "AI parser can propose intents; deterministic confirmation still controls execution.",
     }
 
 
@@ -372,6 +372,194 @@ def _find_command_targets(query):
             matches.append({"id": ident, "name": name or ident,
                             "kind": item.get("kind") or "node"})
     return matches[:8]
+
+
+def _ai_available_targets():
+    info = radio_nodes()
+    targets = []
+    for item in info.get("nodes", [])[:120]:
+        name = str(item.get("name") or "").strip()
+        ident = str(item.get("id") or "").strip()
+        if not name or not ident:
+            continue
+        targets.append({"name": name, "id": ident, "kind": item.get("kind") or "node"})
+    return targets
+
+
+def _ai_default_model(provider):
+    return {
+        "openai": "gpt-4o-mini",
+        "claude": "claude-3-5-haiku-latest",
+        "google": "gemini-1.5-flash",
+        "grok": "grok-2-latest",
+        "deepseek": "deepseek-chat",
+        "other": "gpt-4o-mini",
+    }.get(provider, "gpt-4o-mini")
+
+
+def _ai_prompt(text):
+    targets = _ai_available_targets()
+    target_lines = [
+        "- %s | %s | %s" % (t["name"], t["id"], t["kind"])
+        for t in targets[:80]
+    ]
+    system = (
+        "You parse MeshCore radio controller messages into JSON only. "
+        "Never execute actions. Never invent targets. "
+        "Allowed actions: status, range_start, range_stop, cancel, unknown. "
+        "For range_start, return target_queries as an array of names or ids from the provided targets, "
+        "interval_sec as an integer 5-300, and prefix if clearly requested, else ping. "
+        "For status/range_stop/cancel, return only the action. "
+        "If the request is not about range testing, command status, stopping, or cancelling, return unknown. "
+        "Output compact JSON with keys: action, target_queries, interval_sec, prefix, reason."
+    )
+    user = (
+        "Available targets:\n%s\n\nController message:\n%s" %
+        ("\n".join(target_lines) if target_lines else "(none)", text)
+    )
+    return system, user
+
+
+def _extract_json_object(text):
+    import re as _re
+    raw = str(text or "").strip()
+    if raw.startswith("```"):
+        raw = _re.sub(r"^```(?:json)?\s*", "", raw, flags=_re.I).strip()
+        raw = _re.sub(r"\s*```$", "", raw).strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        raw = raw[start:end + 1]
+    return json.loads(raw)
+
+
+def _http_json(url, headers, payload, timeout=25):
+    import urllib.error as _urlerr
+    import urllib.request as _urlreq
+    data = json.dumps(payload).encode("utf-8")
+    req = _urlreq.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with _urlreq.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except _urlerr.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError("AI provider HTTP %s: %s" % (exc.code, body)) from exc
+
+
+def _ai_provider_call(cfg, system, user):
+    provider = (cfg.get("provider") or "openai").lower()
+    key = cfg.get("api_key") or ""
+    model = cfg.get("model") or _ai_default_model(provider)
+    if not key:
+        raise RuntimeError("AI API key is not saved")
+    if provider in ("openai", "grok", "deepseek", "other"):
+        base = {
+            "openai": "https://api.openai.com/v1",
+            "grok": "https://api.x.ai/v1",
+            "deepseek": "https://api.deepseek.com",
+            "other": os.environ.get("MESHCORE_AI_BASE_URL", "https://api.openai.com/v1"),
+        }.get(provider)
+        body = {
+            "model": model,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if provider == "openai":
+            body["response_format"] = {"type": "json_object"}
+        data = _http_json(base.rstrip("/") + "/chat/completions", {
+            "Authorization": "Bearer %s" % key,
+            "Content-Type": "application/json",
+        }, body)
+        return (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+    if provider == "claude":
+        data = _http_json("https://api.anthropic.com/v1/messages", {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }, {
+            "model": model,
+            "max_tokens": 500,
+            "temperature": 0,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        })
+        parts = data.get("content") or []
+        return "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
+    if provider == "google":
+        from urllib.parse import quote as _quote
+        data = _http_json(
+            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s" %
+            (_quote(model, safe=""), _quote(key, safe="")),
+            {"Content-Type": "application/json"},
+            {
+                "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+                "contents": [{"role": "user", "parts": [{"text": system + "\n\n" + user}]}],
+            })
+        cand = (data.get("candidates") or [{}])[0]
+        parts = ((cand.get("content") or {}).get("parts") or [])
+        return "".join(str(p.get("text") or "") for p in parts if isinstance(p, dict))
+    raise RuntimeError("unsupported provider")
+
+
+def _ai_interpret_command(text):
+    cfg = _load_ai_config()
+    if not cfg.get("enabled"):
+        return None, "disabled"
+    system, user = _ai_prompt(text)
+    raw = _ai_provider_call(cfg, system, user)
+    data = _extract_json_object(raw)
+    if not isinstance(data, dict):
+        raise RuntimeError("AI response was not an object")
+    action = str(data.get("action") or "unknown").strip().lower()
+    if action not in ("status", "range_start", "range_stop", "cancel", "unknown"):
+        action = "unknown"
+    try:
+        interval = int(data.get("interval_sec") or 30)
+    except (TypeError, ValueError):
+        interval = 30
+    prefix = _validate_range_prefix(data.get("prefix") or "ping")
+    queries = data.get("target_queries") or []
+    if isinstance(queries, str):
+        queries = [queries]
+    queries = [str(q or "").strip() for q in queries if str(q or "").strip()][:5]
+    return {
+        "action": action,
+        "target_queries": queries,
+        "interval": max(5, min(300, interval)),
+        "prefix": prefix,
+        "reason": str(data.get("reason") or "").strip()[:160],
+    }, None
+
+
+def _options_from_ai_intent(intent):
+    action = (intent or {}).get("action")
+    if action == "status":
+        return "status", []
+    if action == "cancel":
+        return "cancel", []
+    if action == "range_stop":
+        return "pending", [{"action": "range_stop"}]
+    if action == "range_start":
+        options = []
+        seen = set()
+        for query in intent.get("target_queries") or []:
+            for match in _find_command_targets(query):
+                target = match.get("id")
+                if target and target not in seen:
+                    seen.add(target)
+                    options.append({"action": "range_start",
+                                    "targets": [target],
+                                    "interval": intent.get("interval") or 30,
+                                    "prefix": intent.get("prefix") or "ping"})
+                if len(options) >= 5:
+                    break
+            if len(options) >= 5:
+                break
+        return "pending", options
+    return "unknown", []
 
 
 def _command_source(message):
@@ -624,6 +812,41 @@ def _process_remote_command(message):
         _set_pending_command(source, options)
         _cmd_log("pending", text, source_key, "%d option(s)" % len(options))
         _send_command_reply(message, _format_pending_options(options, "Range test request:"))
+        return
+
+    try:
+        intent, skipped = _ai_interpret_command(text)
+    except Exception as exc:  # noqa: BLE001 - AI must not break deterministic commands
+        _cmd_log("ai_failed", text, source_key, str(exc))
+        _send_command_reply(message, "AI parser could not understand that safely. Try: range test OptimusPrime every 30s")
+        return
+    if not intent:
+        if skipped != "disabled":
+            _cmd_log("ai_skipped", text, source_key, skipped or "not available")
+        return
+    kind, options = _options_from_ai_intent(intent)
+    if kind == "status":
+        _cmd_log("ai_status", text, source_key, intent.get("reason") or "AI parsed status")
+        _send_command_reply(message, _range_status_text())
+        return
+    if kind == "cancel":
+        _clear_pending_command()
+        _cmd_log("ai_cancel", text, source_key, intent.get("reason") or "AI parsed cancel")
+        _send_command_reply(message, "Pending command cancelled.")
+        return
+    if kind == "pending" and options:
+        _set_pending_command(source, options)
+        _cmd_log("ai_pending", text, source_key, intent.get("reason") or "%d option(s)" % len(options))
+        intro = "AI parsed request:"
+        _send_command_reply(message, _format_pending_options(options, intro))
+        return
+    if kind == "pending" and not options:
+        _cmd_log("ai_no_match", text, source_key, ", ".join(intent.get("target_queries") or []))
+        _send_command_reply(message, "AI parsed a command, but I could not match the target. Try a clearer contact or channel name.")
+        return
+    if kind == "unknown":
+        _cmd_log("ai_unknown", text, source_key, intent.get("reason") or "unknown")
+        _send_command_reply(message, "I could not turn that into a safe command. Try: status, stop range, or range test <contact> every 30s.")
 
 
 def _now():

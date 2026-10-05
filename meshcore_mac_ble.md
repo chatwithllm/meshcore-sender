@@ -344,13 +344,14 @@ installed or loaded automatically.
 
 ## 8. Pending AI interpreter
 
-**AI interpreter — configuration added, execution not wired.**
-The Commands tool now has a pending AI interpreter panel. It can store provider, optional
-model and an API key in `DATA_DIR/ai.json` with file mode `0600`; the browser never gets
-the saved key back, only `key_saved`. Supported provider labels are OpenAI, Claude,
-Google/Gemini, Grok, DeepSeek and Other. This is still not part of command execution.
-The future AI layer can translate messy text into a structured intent, but the LLM must
-never be the safety boundary: it proposes `{command, targets, interval_sec}` style
+**AI interpreter — parse-only fallback.**
+The Commands tool has an AI interpreter panel. It can store provider, optional model and
+an API key in `DATA_DIR/ai.json` with file mode `0600`; the browser never gets the saved
+key back, only `key_saved`. Supported provider labels are OpenAI, Claude, Google/Gemini,
+Grok, DeepSeek and Other. When enabled, deterministic commands still run first. AI is only
+a fallback parser for messy controller text, translating it into structured intents such
+as `status`, `range_start`, `range_stop`, `cancel` or `unknown`. The LLM is never the
+safety boundary: it proposes `{action, target_queries, interval_sec, prefix}` style
 intents, and the deterministic allowlist + confirmation state machine still decides
 whether anything runs.
 

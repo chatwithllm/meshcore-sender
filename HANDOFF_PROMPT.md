@@ -59,8 +59,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   mirrors automatic replies into the related conversation so received commands and
   app responses are visible in chat history. Repeated same-text commands are allowed
   after the short live-queue duplicate guard, so `Status` can be sent more than once.
-  AI interpreter settings are visible as pending work in the Commands tool and can store
-  provider/model/API key locally, but no LLM call is wired into command execution yet.
+  AI interpreter settings are visible in the Commands tool and can store provider/model/
+  API key locally. When enabled, AI is parse-only: it can propose structured intents for
+  messy controller text, but numbered confirmation still controls execution.
 - Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
   public key + display name + type, and export this node/contact URI.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
@@ -72,10 +73,11 @@ NOT BUILT — NEXT TASKS IN ORDER
    then Refresh and confirm the contact appears.
 2. Add tests when the project grows enough to support them.
 
-PENDING WORK — AI INTERPRETER
-- Configuration UI and local secret storage exist. Next step is wiring a provider client
-  that converts messy controller text into structured intents only. The allowlist +
-  confirmation state machine must remain the safety boundary.
+AI INTERPRETER STATUS
+- Configuration UI, local secret storage and provider client are wired. The parser is
+  fallback-only after deterministic commands. It converts messy controller text into
+  structured intents only; the allowlist + confirmation state machine remains the safety
+  boundary.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
