@@ -91,6 +91,9 @@ AI INTERPRETER STATUS
   confirmation choices; it must not start the range test until the controller replies `1`.
 - Local fallback also treats "ping OptimusPrime in 30 sec", "ping OptimusPrime every 30 sec",
   and "check OptimusPrime every half minute" as range-test confirmation requests before calling AI.
+- Command history now persists to `command_history.json`; use it for AI/remote-command failures
+  after restart. AI provider calls retry once on transient network/server errors, and
+  DeepSeek/OpenAI requests include JSON response-format hints.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens

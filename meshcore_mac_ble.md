@@ -377,6 +377,12 @@ Local fallback note: `ping <target> in/every <N> sec` and `check <target> every 
 minute` are treated as range-test requests before calling AI, so common radio wording like
 `Can you ping OptimusPrime in 30 sec` still produces numbered confirmation choices.
 
+Reliability note: remote-command history is persisted in `command_history.json`, including
+AI parser failures, so the Commands tool can still show what happened after an app restart.
+AI provider calls retry once for transient network/server errors, and DeepSeek/OpenAI calls
+request JSON-formatted output. Common command phrasings should still be covered by local
+parsers first; AI is a fallback for fuzzier wording, not the only path to execution.
+
 ---
 
 ## 9. The verification gap (read before promising anything)

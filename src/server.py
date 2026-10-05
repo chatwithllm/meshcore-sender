@@ -25,6 +25,7 @@ PUBLIC = os.path.join(ROOT, "public")
 CONFIG = os.path.join(DATA, "config.json")   # readable, never secrets
 AUTH = os.path.join(DATA, "auth.json")       # passphrase hash, mode 0600
 AI_CONFIG = os.path.join(DATA, "ai.json")    # optional LLM provider key, mode 0600
+COMMAND_HISTORY = os.path.join(DATA, "command_history.json")
 PORT = int(os.environ.get("PORT", "8788"))
 TIMEOUT = int(os.environ.get("SEND_TIMEOUT", "45"))
 
@@ -326,7 +327,38 @@ def _save_ai_config(enabled=None, provider=None, model=None, api_key=None, clear
     return _public_ai_config()
 
 
+def _load_command_history():
+    if not os.path.exists(COMMAND_HISTORY):
+        return []
+    try:
+        with open(COMMAND_HISTORY, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)][-_CMD_HISTORY_MAX:]
+    except Exception:  # noqa: BLE001 - command history is diagnostics only
+        pass
+    return []
+
+
+def _save_command_history(history):
+    try:
+        os.makedirs(DATA, exist_ok=True)
+        tmp = COMMAND_HISTORY + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(list(history or [])[-_CMD_HISTORY_MAX:], fh, indent=2, sort_keys=True)
+        os.replace(tmp, COMMAND_HISTORY)
+    except Exception:  # noqa: BLE001 - logging must not break radio commands
+        pass
+
+
+def _ensure_command_history_loaded():
+    with _cmd_lock:
+        if not _commands.get("history"):
+            _commands["history"] = _load_command_history()
+
+
 def _cmd_log(kind, text, source=None, detail=None):
+    _ensure_command_history_loaded()
     item = {"at": _now(), "kind": kind, "text": text}
     if source:
         item["source"] = source
@@ -336,10 +368,13 @@ def _cmd_log(kind, text, source=None, detail=None):
         _commands["history"].append(item)
         if len(_commands["history"]) > _CMD_HISTORY_MAX:
             _commands["history"] = _commands["history"][-_CMD_HISTORY_MAX:]
+        history = list(_commands["history"])
+    _save_command_history(history)
     return item
 
 
 def _cmd_status():
+    _ensure_command_history_loaded()
     rc = _command_config()
     with _cmd_lock:
         pending = dict(_commands["pending"]) if _commands["pending"] else None
@@ -435,17 +470,28 @@ def _extract_json_object(text):
     return json.loads(raw)
 
 
-def _http_json(url, headers, payload, timeout=25):
+def _http_json(url, headers, payload, timeout=25, attempts=2):
+    import socket as _socket
     import urllib.error as _urlerr
     import urllib.request as _urlreq
     data = json.dumps(payload).encode("utf-8")
-    req = _urlreq.Request(url, data=data, headers=headers, method="POST")
-    try:
-        with _urlreq.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8", "replace"))
-    except _urlerr.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")[:300]
-        raise RuntimeError("AI provider HTTP %s: %s" % (exc.code, body)) from exc
+    last_error = None
+    for attempt in range(max(1, int(attempts or 1))):
+        req = _urlreq.Request(url, data=data, headers=headers, method="POST")
+        try:
+            with _urlreq.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8", "replace"))
+        except _urlerr.HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")[:300]
+            last_error = RuntimeError("AI provider HTTP %s: %s" % (exc.code, body))
+            if exc.code not in (408, 429, 500, 502, 503, 504) or attempt + 1 >= attempts:
+                raise last_error from exc
+        except (_urlerr.URLError, TimeoutError, _socket.timeout) as exc:
+            last_error = RuntimeError("AI provider network error: %s" % exc)
+            if attempt + 1 >= attempts:
+                raise last_error from exc
+        time.sleep(0.6 * (attempt + 1))
+    raise last_error or RuntimeError("AI provider request failed")
 
 
 def _ai_provider_call(cfg, system, user):
@@ -469,7 +515,7 @@ def _ai_provider_call(cfg, system, user):
                 {"role": "user", "content": user},
             ],
         }
-        if provider == "openai":
+        if provider in ("openai", "deepseek"):
             body["response_format"] = {"type": "json_object"}
         data = _http_json(base.rstrip("/") + "/chat/completions", {
             "Authorization": "Bearer %s" % key,
