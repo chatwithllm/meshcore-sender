@@ -307,6 +307,45 @@
           </div>
         </div>
         <div id="cmd-status" class="cmd-status"></div>
+        <div class="ai-card" id="ai-card">
+          <div class="ai-head">
+            <div>
+              <h3>Pending AI interpreter</h3>
+              <p>Optional parser for messy remote-command text. Deterministic confirmation still controls execution.</p>
+            </div>
+            <span id="ai-state" class="ai-state">Pending</span>
+          </div>
+          <div class="ai-grid">
+            <label class="cmd-toggle ai-toggle">
+              <input type="checkbox" id="ai-enabled">
+              <span>Enable AI parser when wired</span>
+            </label>
+            <div>
+              <label for="ai-provider">Provider</label>
+              <select id="ai-provider">
+                <option value="openai">OpenAI</option>
+                <option value="claude">Claude</option>
+                <option value="google">Google / Gemini</option>
+                <option value="grok">Grok</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="ai-model">Model</label>
+              <input id="ai-model" type="text" placeholder="optional model name">
+            </div>
+            <div>
+              <label for="ai-key">API key</label>
+              <input id="ai-key" type="password" autocomplete="off" placeholder="leave blank to keep saved key">
+            </div>
+          </div>
+          <div class="row ai-actions">
+            <button type="button" id="ai-save">Save AI settings</button>
+            <button type="button" class="ghost" id="ai-clear-key">Clear key</button>
+            <span class="note" id="ai-note" style="margin:0"></span>
+          </div>
+        </div>
       </div>
     </details>
 
@@ -1565,6 +1604,7 @@ document.addEventListener('keydown', function (e) {
 
   var CMD_STATE = {enabled:false, controllers:[], favorites:[], history:[], pending:null};
   window.CMD_STATE = CMD_STATE;
+  var AI_STATE = {enabled:false, provider:'openai', model:'', key_saved:false, mode:'pending'};
 
   function cmdControllerChoices(){
     var data = (window.__mcDest && window.__mcDest.getData) ? window.__mcDest.getData() : [];
@@ -1685,6 +1725,58 @@ document.addEventListener('keydown', function (e) {
     });
   }
 
+  function aiRender(data){
+    AI_STATE = {
+      enabled: !!(data && data.enabled),
+      provider: (data && data.provider) || 'openai',
+      model: (data && data.model) || '',
+      key_saved: !!(data && data.key_saved),
+      mode: (data && data.mode) || 'pending'
+    };
+    var enabled = document.getElementById('ai-enabled');
+    var provider = document.getElementById('ai-provider');
+    var model = document.getElementById('ai-model');
+    var key = document.getElementById('ai-key');
+    var state = document.getElementById('ai-state');
+    if (!enabled || !provider || !model || !state) return;
+    enabled.checked = AI_STATE.enabled;
+    provider.value = AI_STATE.provider;
+    model.value = AI_STATE.model || '';
+    if (key) key.value = '';
+    state.textContent = AI_STATE.enabled ? 'Configured' : (AI_STATE.key_saved ? 'Key saved' : 'Pending');
+    state.className = 'ai-state ' + (AI_STATE.enabled ? 'on' : AI_STATE.key_saved ? 'saved' : '');
+  }
+
+  function aiLoad(){
+    return api('/api/ai/config').then(function(r){
+      if (r.status === 200) aiRender(r.data);
+    });
+  }
+
+  function aiSave(clearKey){
+    var note = document.getElementById('ai-note');
+    var enabled = document.getElementById('ai-enabled');
+    var provider = document.getElementById('ai-provider');
+    var model = document.getElementById('ai-model');
+    var key = document.getElementById('ai-key');
+    if (note) note.textContent = clearKey ? 'Clearing...' : 'Saving...';
+    api('/api/ai/config', {method:'POST', body:JSON.stringify({
+      enabled: !!(enabled && enabled.checked),
+      provider: provider ? provider.value : 'openai',
+      model: model ? model.value : '',
+      api_key: key ? key.value : '',
+      clear_key: !!clearKey
+    })}).then(function(r){
+      if (r.status !== 200) {
+        if (note) note.textContent = r.data.error || 'Could not save';
+        return;
+      }
+      aiRender(r.data);
+      if (note) note.textContent = clearKey ? 'Key cleared' : 'Saved';
+      setTimeout(function(){ if (note) note.textContent = ''; }, 1800);
+    });
+  }
+
   function cmdSave(){
     var note = document.getElementById('cmd-note');
     var enabled = document.getElementById('cmd-enabled');
@@ -1719,7 +1811,12 @@ document.addEventListener('keydown', function (e) {
     if (manual) manual.onkeydown = function(e){
       if (e.key === 'Enter') { e.preventDefault(); cmdAddManual(); }
     };
+    var aiSaveBtn = document.getElementById('ai-save');
+    var aiClearBtn = document.getElementById('ai-clear-key');
+    if (aiSaveBtn) aiSaveBtn.onclick = function(){ aiSave(false); };
+    if (aiClearBtn) aiClearBtn.onclick = function(){ aiSave(true); };
     cmdLoad();
+    aiLoad();
   }
 
   // move the conversation panel into #cv-anchor so it fills the flex slot
@@ -2479,6 +2576,18 @@ document.addEventListener('keydown', function (e) {
     '.cmd-row{border-bottom:1px solid #ffffff12;padding:5px 0;font-size:12px;color:var(--ink)}' +
     '.cmd-row small{display:block;color:var(--mut);margin-top:2px}' +
     '.cmd-time{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8fb8d8;margin-right:6px}' +
+    '.ai-card{max-width:720px;margin-top:14px;border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:12px}' +
+    '.ai-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}' +
+    '.ai-head h3{margin:0 0 3px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}' +
+    '.ai-head p{margin:0;color:var(--mut);font-size:12px;line-height:1.35}' +
+    '.ai-state{flex:0 0 auto;border-radius:999px;border:1px solid #ffffff20;color:var(--mut);font-size:11px;font-weight:800;padding:4px 9px}' +
+    '.ai-state.saved{color:#e8c44a;border-color:#e8c44a66;background:#2c2714}' +
+    '.ai-state.on{color:#58c07a;border-color:#58c07a66;background:#143822}' +
+    '.ai-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}' +
+    '.ai-grid select{width:100%;background:#0c0e12;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 10px;font:inherit}' +
+    '.ai-toggle{grid-column:1 / -1;margin-bottom:0}' +
+    '.ai-actions{margin-top:10px}' +
+    '@media(max-width:720px){.ai-grid{grid-template-columns:1fr}.ai-head{flex-direction:column}}' +
     '#cv-panel{height:clamp(460px,calc(100vh - 220px),680px);min-height:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:10px;display:flex;flex-direction:column;overflow:hidden}' +
     '#cv-body{flex:1;min-height:0;display:grid;grid-template-columns:240px 1fr;gap:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}' +
     '@media(max-height:650px){#cv-panel{height:420px}}' +

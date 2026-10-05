@@ -59,7 +59,8 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   mirrors automatic replies into the related conversation so received commands and
   app responses are visible in chat history. Repeated same-text commands are allowed
   after the short live-queue duplicate guard, so `Status` can be sent more than once.
-  It intentionally has no LLM yet.
+  AI interpreter settings are visible as pending work in the Commands tool and can store
+  provider/model/API key locally, but no LLM call is wired into command execution yet.
 - Contacts drawer: import `meshcore://...` contact URI, manually add contact by full
   public key + display name + type, and export this node/contact URI.
 - Flood-advert button; message templates, Enter-to-submit login, loopback-only binding,
@@ -71,12 +72,10 @@ NOT BUILT — NEXT TASKS IN ORDER
    then Refresh and confirm the contact appears.
 2. Add tests when the project grows enough to support them.
 
-PARKED WORK — AI INTERPRETER
-- User asked to save this and bring it back only when they say "Bring Ai pending work".
-  See §8 in the handoff doc.
-- Remote Commands v1 is deterministic and already implemented. Add LLM providers only
-  later. LLMs may parse messy text into structured intents, but the allowlist +
-  confirmation state machine remains the safety boundary.
+PENDING WORK — AI INTERPRETER
+- Configuration UI and local secret storage exist. Next step is wiring a provider client
+  that converts messy controller text into structured intents only. The allowlist +
+  confirmation state machine must remain the safety boundary.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens

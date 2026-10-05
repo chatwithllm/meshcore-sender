@@ -24,6 +24,7 @@ DATA = os.environ.get("DATA_DIR", os.path.join(ROOT, "data"))
 PUBLIC = os.path.join(ROOT, "public")
 CONFIG = os.path.join(DATA, "config.json")   # readable, never secrets
 AUTH = os.path.join(DATA, "auth.json")       # passphrase hash, mode 0600
+AI_CONFIG = os.path.join(DATA, "ai.json")    # optional LLM provider key, mode 0600
 PORT = int(os.environ.get("PORT", "8788"))
 TIMEOUT = int(os.environ.get("SEND_TIMEOUT", "45"))
 
@@ -257,6 +258,72 @@ def _save_command_config(enabled, controllers, favorites=None):
     }
     _save_config(cfg)
     return cfg["remote_commands"]
+
+
+def _load_ai_config():
+    if not os.path.exists(AI_CONFIG):
+        return {"enabled": False, "provider": "openai", "model": "", "api_key": ""}
+    try:
+        with open(AI_CONFIG, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, dict):
+            data = {}
+    except Exception:  # noqa: BLE001 - corrupt AI config should not break the app
+        data = {}
+    return {
+        "enabled": bool(data.get("enabled")),
+        "provider": str(data.get("provider") or "openai").strip() or "openai",
+        "model": str(data.get("model") or "").strip(),
+        "api_key": str(data.get("api_key") or ""),
+    }
+
+
+def _public_ai_config():
+    cfg = _load_ai_config()
+    return {
+        "enabled": bool(cfg.get("enabled")),
+        "provider": cfg.get("provider") or "openai",
+        "model": cfg.get("model") or "",
+        "key_saved": bool(cfg.get("api_key")),
+        "mode": "pending",
+        "note": "AI parser is configured but not wired into command execution yet.",
+    }
+
+
+def _save_ai_config(enabled=None, provider=None, model=None, api_key=None, clear_key=False):
+    import re as _re
+    cfg = _load_ai_config()
+    if enabled is not None:
+        cfg["enabled"] = bool(enabled)
+    if provider is not None:
+        provider = str(provider or "").strip().lower()
+        if provider not in ("openai", "claude", "google", "grok", "deepseek", "other"):
+            raise ValueError("unsupported provider")
+        cfg["provider"] = provider
+    if model is not None:
+        model = str(model or "").strip()
+        if model and not _re.fullmatch(r"[A-Za-z0-9_.:/@#+-]{1,80}", model):
+            raise ValueError("invalid model")
+        cfg["model"] = model
+    if clear_key:
+        cfg["api_key"] = ""
+    elif api_key is not None:
+        api_key = str(api_key or "").strip()
+        if api_key:
+            cfg["api_key"] = api_key
+    if cfg.get("enabled") and not cfg.get("api_key"):
+        raise ValueError("save an API key before enabling AI")
+    os.makedirs(DATA, exist_ok=True)
+    tmp = AI_CONFIG + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, indent=2, sort_keys=True)
+    os.replace(tmp, AI_CONFIG)
+    try:
+        os.chmod(AI_CONFIG, 0o600)
+    except OSError:
+        pass
+    return _public_ai_config()
 
 
 def _cmd_log(kind, text, source=None, detail=None):
@@ -765,6 +832,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(401, {"error": "unauthorized"})
                 return
             self._json(200, _cmd_status())
+        elif path == "/api/ai/config":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured", "setup": "/setup"})
+                return
+            if not self._session():
+                self._json(401, {"error": "unauthorized"})
+                return
+            self._json(200, _public_ai_config())
         elif path == "/api/nodes":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
@@ -881,6 +956,29 @@ class Handler(BaseHTTPRequestHandler):
             _cmd_log("config", "remote command settings updated",
                      detail=("enabled" if rc.get("enabled") else "disabled"))
             self._json(200, _cmd_status())
+        elif path == "/api/ai/config":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            try:
+                cfg = _save_ai_config(enabled=body.get("enabled"),
+                                      provider=body.get("provider"),
+                                      model=body.get("model"),
+                                      api_key=body.get("api_key"),
+                                      clear_key=bool(body.get("clear_key")))
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
+            _cmd_log("ai_config", "AI interpreter settings updated",
+                     detail=("enabled" if cfg.get("enabled") else "disabled"))
+            self._json(200, cfg)
         elif path in ("/api/contacts/import", "/api/contacts/add", "/api/contacts/export"):
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})

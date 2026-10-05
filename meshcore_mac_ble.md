@@ -342,13 +342,14 @@ installed or loaded automatically.
 
 ---
 
-## 8. Requested, designed, NOT built
+## 8. Pending AI interpreter
 
-**AI interpreter — parked pending work.**
-User asked to save this idea and bring it back only when they say **"Bring Ai pending
-work"**. Remote Commands v1 is now deterministic and does not use an LLM. The future AI
-layer can translate messy text into a structured intent, with providers such as OpenAI,
-Claude, Google/Gemini, Grok, DeepSeek, and others configured by API key. The LLM must
+**AI interpreter — configuration added, execution not wired.**
+The Commands tool now has a pending AI interpreter panel. It can store provider, optional
+model and an API key in `DATA_DIR/ai.json` with file mode `0600`; the browser never gets
+the saved key back, only `key_saved`. Supported provider labels are OpenAI, Claude,
+Google/Gemini, Grok, DeepSeek and Other. This is still not part of command execution.
+The future AI layer can translate messy text into a structured intent, but the LLM must
 never be the safety boundary: it proposes `{command, targets, interval_sec}` style
 intents, and the deterministic allowlist + confirmation state machine still decides
 whether anything runs.
