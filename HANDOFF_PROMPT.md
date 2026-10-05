@@ -145,6 +145,17 @@ MOBILE CHAT CHECKPOINT (2026-10-05)
 - These checks use mocked API responses, not the user's authenticated radio session.
   Confirm the live iPhone view after installing the rebuilt app.
 
+HOME ASSISTANT CHECKPOINT (2026-10-05)
+- User has Home Assistant OS with Bluetooth available. Server App packaging lives
+  in meshcore_homeassistant/; root repository.yaml makes the GitHub repo an App repo.
+- custom_components/meshcore_sender/ provides a config flow, session renewal,
+  target picker, interval number, Start/Stop buttons, running/connection indicators,
+  statistics and multi-target actions. Choices persist in config entry options.
+- Read homeassistant.md for installation and the deferred live test checklist.
+- No Home Assistant deployment or hardware testing has been performed. Do not claim
+  this runs on the user's HA host until its local adapter and radio are verified.
+- The App pins the existing published server commit, avoiding duplicate source trees.
+
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change
 either confirmed in a rendered signed-in view or explicitly reported as unverified.

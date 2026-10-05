@@ -4,6 +4,13 @@ Web UI for a MeshCore radio connected over BLE. It sends direct messages, channe
 receives inbox updates, runs range tests, maps repeaters with GPS, and supports deterministic
 remote command control from an allowlisted contact or channel.
 
+## Home Assistant
+
+An experimental Home Assistant OS App runs the server on the Home Assistant host
+using local Bluetooth. A custom integration adds target/interval controls, Start/Stop
+buttons, range statistics and automation actions. See [Home Assistant setup](homeassistant.md).
+Once moved to that host, the radio server no longer depends on Mac login.
+
 ## Run locally
 
 ```bash
@@ -25,7 +32,7 @@ it to the public internet or public tunnels.
 - `PORT`: defaults to `8788`
 - `MESHCORE_HOST` or `HOST`: defaults to `127.0.0.1`; use `0.0.0.0` for LAN access
 - `DATA_DIR`: defaults to `./data`
-- `MESHCORE_ADDR`: BLE UUID of the MeshCore radio
+- `MESHCORE_ADDR`: BLE UUID on macOS, or Bluetooth MAC address on Linux
 - `MESHCORE_TIMEOUT`: radio command timeout in seconds
 - `MESHCORE_SDK_SITE`: optional path override for the MeshCore SDK site-packages
 

@@ -1,0 +1,60 @@
+start_range_test:
+  name: Start range test
+  description: Start repeated pings to one or more contacts or channels.
+  fields:
+    entry_id:
+      name: Server
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    targets:
+      name: Targets
+      description: Destination IDs from the server, such as dm:OptimusPrime or chan:1.
+      required: true
+      selector:
+        text:
+          multiple: true
+    interval:
+      name: Interval
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: s
+          mode: box
+    prefix:
+      name: Message prefix
+      default: ping
+      selector:
+        text:
+stop_range_test:
+  name: Stop range test
+  description: Stop the current range test.
+  fields:
+    entry_id:
+      name: Server
+      selector:
+        config_entry:
+          integration: meshcore_sender
+send_message:
+  name: Send message
+  description: Send a message to one or more MeshCore destination IDs.
+  fields:
+    entry_id:
+      name: Server
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    targets:
+      name: Targets
+      required: true
+      selector:
+        text:
+          multiple: true
+    message:
+      name: Message
+      required: true
+      selector:
+        text:
+          multiline: true

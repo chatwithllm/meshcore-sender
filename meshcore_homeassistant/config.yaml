@@ -1,0 +1,25 @@
+name: MeshCore Sender
+version: "0.1.0"
+slug: meshcore_sender
+description: Always-on MeshCore companion server with Bluetooth and range tests
+url: https://github.com/chatwithllm/meshcore-sender
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+init: false
+host_dbus: true
+ports:
+  8788/tcp: 8788
+ports_description:
+  8788/tcp: MeshCore web interface and authenticated API
+webui: http://[HOST]:[PORT:8788]
+watchdog: tcp://[HOST]:[PORT:8788]
+stage: experimental
+options:
+  bluetooth_address: ""
+  timeout: 30
+schema:
+  bluetooth_address: str
+  timeout: int(5,120)

@@ -1,0 +1,32 @@
+"""Start and stop range tests from dashboards."""
+
+from homeassistant.components.button import ButtonEntity
+from homeassistant.exceptions import HomeAssistantError
+
+from .api import MeshCoreError
+from .const import DOMAIN
+from .entity import MeshCoreEntity
+
+
+async def async_setup_entry(hass, entry, async_add_entities):
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities([
+        MeshCoreButton(coordinator, "start", "Start range test"),
+        MeshCoreButton(coordinator, "stop", "Stop range test"),
+    ])
+
+
+class MeshCoreButton(MeshCoreEntity, ButtonEntity):
+    def __init__(self, coordinator, key, name):
+        super().__init__(coordinator, key, name)
+        self.key = key
+        self._attr_icon = "mdi:play" if key == "start" else "mdi:stop"
+
+    async def async_press(self):
+        try:
+            if self.key == "start":
+                await self.coordinator.start()
+            else:
+                await self.coordinator.action("/api/range/stop")
+        except MeshCoreError as error:
+            raise HomeAssistantError(str(error)) from error

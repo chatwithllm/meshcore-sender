@@ -1,0 +1,25 @@
+{
+  "title": "MeshCore Sender",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to MeshCore Sender",
+        "description": "Start the MeshCore server App and set up its passphrase in its web interface first.",
+        "data": {"url": "Server URL", "passphrase": "Server passphrase"}
+      },
+      "reauth_confirm": {
+        "title": "Update server passphrase",
+        "data": {"passphrase": "Server passphrase"}
+      }
+    },
+    "error": {
+      "invalid_url": "Enter an HTTP or HTTPS server URL without a path or credentials.",
+      "invalid_auth": "Check the server passphrase and complete server setup first.",
+      "cannot_connect": "Unable to connect to MeshCore Sender. Check the URL and that the App is running."
+    },
+    "abort": {
+      "already_configured": "This server is already configured.",
+      "reauth_successful": "Server passphrase updated."
+    }
+  }
+}
