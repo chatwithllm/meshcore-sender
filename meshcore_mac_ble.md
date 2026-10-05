@@ -237,6 +237,11 @@ to a name. The current UI pass widens the console, adds conversation search, mov
 into the inbox header, shows target type as a compact badge, and only shows a short id
 when duplicate display names need disambiguation.
 
+**Tools workspace.** The lower utility area is a tabbed workspace instead of a vertical
+stack of drawers. Message compose, Range test, Remote commands, Contacts, Repeater map
+and Raw inbox each have one tab. The selected tab is remembered in localStorage, and the
+Range tab shows a live indicator while a test is running.
+
 **Repeater map.** A **Repeater map** drawer shows only repeaters with usable advertised
 GPS. It renders OpenStreetMap tiles locally in the browser, supports plus/minus and
 mouse-wheel zoom, click-drag panning, selected repeater popups, row/marker selection sync,

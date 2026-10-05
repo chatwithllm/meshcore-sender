@@ -97,6 +97,26 @@
   .drawer summary::-webkit-details-marker{display:none}
   .drawer-body{padding:14px;border-top:1px solid var(--line)}
   #drawer-messages-body .card,#drawer-range-body .card{background:transparent;border:none;padding:0}
+  .tools-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+               margin:0 0 18px;overflow:hidden;flex:0 0 auto}
+  .tools-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;
+              padding:12px 14px;border-bottom:1px solid var(--line)}
+  .tools-head h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut);
+                 margin:0 0 2px;font-weight:800}
+  .tools-head p{margin:0;color:var(--mut);font-size:12px}
+  .tools-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tool-tab{background:transparent;color:var(--mut);border:1px solid #ffffff22;border-radius:999px;
+            padding:5px 10px;font-size:12px;font-weight:700}
+  .tool-tab.active{background:var(--accent);border-color:var(--accent);color:#071522}
+  .tool-tab.tool-live:not(.active)::after{content:"";display:inline-block;width:7px;height:7px;
+            margin-left:6px;border-radius:999px;background:#58c07a;box-shadow:0 0 0 0 #58c07a80;
+            animation:rt-live-pulse 1.2s ease-out infinite}
+  .tool-tab.tool-due:not(.active)::after{background:#e8c44a;animation:rt-due-pulse .7s ease-out infinite}
+  .tools-panel .drawer{display:none;margin:0;border:0;border-radius:0;background:transparent}
+  .tools-panel .drawer.tool-active{display:block}
+  .tools-panel .drawer summary{display:none}
+  .tools-panel .drawer-body{border-top:0;padding:14px}
+  @media(max-width:760px){.tools-head{grid-template-columns:1fr}.tools-tabs{justify-content:flex-start}}
   .contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
   .contact-panel{border:1px solid var(--line);border-radius:6px;padding:12px;background:#0f1218}
   .contact-panel h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
@@ -160,8 +180,23 @@
     <!-- conversations live here (panel injected by JS below) -->
     <div id="cv-anchor"></div>
 
-    <!-- collapsible drawers -->
-    <details id="drawer-compose" class="drawer">
+    <section id="tools-panel" class="tools-panel">
+      <div class="tools-head">
+        <div>
+          <h2>Tools</h2>
+          <p>Compose, range test, command control, contacts, and map utilities.</p>
+        </div>
+        <div id="tools-tabs" class="tools-tabs" role="tablist" aria-label="Tools">
+          <button type="button" class="tool-tab active" data-tool-tab="drawer-compose">Message</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-range">Range</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-commands">Commands</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-contacts">Contacts</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-repeater-map">Map</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-messages">Raw</button>
+        </div>
+      </div>
+
+    <details id="drawer-compose" class="drawer tool-active" open>
       <summary>New message</summary>
       <div class="drawer-body">
         <div style="margin-bottom:10px">
@@ -279,6 +314,7 @@
       <summary>Repeater map</summary>
       <div class="drawer-body" id="drawer-repeater-map-body"></div>
     </details>
+    </section>
   </section>
 </main>
 
@@ -1369,12 +1405,18 @@ document.addEventListener('keydown', function (e) {
     var label = clock && clock.querySelector('.rt-clock-label');
     var drawer = document.getElementById('drawer-range');
     var summary = document.getElementById('rt-summary-state');
+    var rangeTab = document.querySelector('[data-tool-tab="drawer-range"]');
     function setSummary(text, state){
       if (drawer) {
         drawer.classList.toggle('range-live', state === 'live' || state === 'due');
         drawer.classList.toggle('range-due', state === 'due');
       }
       if (summary) summary.innerHTML = text ? '<span></span>' + esc(text) : '';
+      if (rangeTab) {
+        rangeTab.classList.toggle('tool-live', state === 'live' || state === 'due');
+        rangeTab.classList.toggle('tool-due', state === 'due');
+        rangeTab.setAttribute('data-live-text', text || '');
+      }
     }
     if (!clock || !fill || !label) {
       setSummary('', 'idle');
@@ -1687,9 +1729,38 @@ document.addEventListener('keydown', function (e) {
     if (!anchor || !panel) return;
     if (panel.parentElement !== anchor) anchor.appendChild(panel);
   }
-  var _mountObs = new MutationObserver(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); });
+  function initToolTabs(){
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('[data-tool-tab]'));
+    if (!tabs.length || tabs[0].dataset.bound) return;
+    var drawers = tabs.map(function(tab){ return document.getElementById(tab.dataset.toolTab); })
+      .filter(Boolean);
+    function activate(id){
+      if (!document.getElementById(id)) id = 'drawer-compose';
+      tabs.forEach(function(tab){
+        var on = tab.dataset.toolTab === id;
+        tab.classList.toggle('active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      drawers.forEach(function(drawer){
+        var on = drawer.id === id;
+        drawer.classList.toggle('tool-active', on);
+        if (on) drawer.setAttribute('open', '');
+        else drawer.removeAttribute('open');
+      });
+      try { localStorage.setItem('mc.activeTool.v1', id); } catch(e) {}
+    }
+    tabs.forEach(function(tab){
+      tab.dataset.bound = '1';
+      tab.setAttribute('role', 'tab');
+      tab.onclick = function(){ activate(tab.dataset.toolTab); };
+    });
+    var saved = 'drawer-compose';
+    try { saved = localStorage.getItem('mc.activeTool.v1') || saved; } catch(e) {}
+    activate(saved);
+  }
+  var _mountObs = new MutationObserver(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); initToolTabs(); });
   _mountObs.observe(document.body, {childList:true, subtree:true});
-  setTimeout(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); }, 200);
+  setTimeout(function(){ _mountPanel(); _moveDrawerChildren(); _syncRadioBar(); cmdInit(); initToolTabs(); }, 200);
 
   function _moveDrawerChildren(){
     // inbox card → raw inbox drawer

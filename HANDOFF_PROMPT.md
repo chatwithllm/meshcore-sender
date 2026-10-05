@@ -43,6 +43,9 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
   the conversation sidebar. Current UI pass widened the console, added conversation
   search, moved Fetch into the inbox header, shows target type as a compact badge, and
   adds a short id only when duplicate display names need disambiguation.
+- Lower utility drawers are now a single Tools workspace with tabs for Message, Range,
+  Commands, Contacts, Map and Raw. The last selected tool is remembered locally, and the
+  Range tab shows a live indicator while a range test is running.
 - Repeater map: repeaters with advertised GPS are shown on an OpenStreetMap-backed map
   with pan, wheel zoom, marker popup, selected-row sync and "Open full map". Marker
   selection and right-panel selection are both supported; popup close is handled on
