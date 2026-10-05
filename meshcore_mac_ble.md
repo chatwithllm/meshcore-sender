@@ -355,6 +355,24 @@ safety boundary: it proposes `{action, target_queries, interval_sec, prefix}` st
 intents, and the deterministic allowlist + confirmation state machine still decides
 whether anything runs.
 
+Latest AI-related commits:
+
+| commit | purpose |
+| --- | --- |
+| `8feba67` | add AI settings UI, `/api/ai/config`, and local `DATA_DIR/ai.json` secret storage |
+| `40fe64a` | wire provider calls as fallback parser after deterministic commands |
+
+Recommended test flow:
+
+1. Open the **Commands** tool.
+2. Select provider/model, enter API key, enable AI parser, and save.
+3. From an allowed controller such as `OptimusPrime`, send a fuzzy request, for example
+   `can you keep checking optimus every half minute`.
+4. Expected: app replies with numbered confirmation choices. It must not start the range
+   test until the controller replies `1`.
+5. If the provider call fails, the command history should record `ai_failed` and the chat
+   should get a safe fallback prompt.
+
 ---
 
 ## 9. The verification gap (read before promising anything)

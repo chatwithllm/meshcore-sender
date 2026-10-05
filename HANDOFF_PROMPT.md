@@ -30,6 +30,13 @@ WHERE EVERYTHING IS
 - Server log (logs every request with its status code — a primary debugging tool):
   /tmp/meshcore-sender.log
 
+LATEST PUSHED CHECKPOINTS
+- `40fe64a` Wire AI parser as remote command fallback
+- `8feba67` Add pending AI interpreter settings
+- `74910fa` Convert utility drawers to tools workspace
+- `dcef7fc` Polish conversation console UI
+- `e6e5bd9` Allow repeated inbound command messages
+
 WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
 - BLE connect by UUID; reads channels (chan:0 public, chan:1 private) and 50+ contacts.
 - Destinations classified from the SDK contact type/adverts into
@@ -78,6 +85,10 @@ AI INTERPRETER STATUS
   fallback-only after deterministic commands. It converts messy controller text into
   structured intents only; the allowlist + confirmation state machine remains the safety
   boundary.
+- Test flow: open Commands, save provider/model/API key, enable AI parser, then from an
+  allowed controller such as OptimusPrime send a fuzzy request like "can you keep checking
+  optimus every half minute". Expected behavior: the app replies with numbered
+  confirmation choices; it must not start the range test until the controller replies `1`.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens
