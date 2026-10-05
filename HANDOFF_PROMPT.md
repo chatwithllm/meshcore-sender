@@ -136,6 +136,15 @@ METHOD THAT WORKS HERE (learned the hard way; see doc §2 and §11)
   prompt that you never see, and from then on you can verify the real screen. Until then,
   never claim a UI change is verified.
 
+MOBILE CHAT CHECKPOINT (2026-10-05)
+- Fixed the hidden desktop sidebar track remaining in the mobile chat grid.
+- Selected conversations fill the phone viewport; Back returns to the inbox, and
+  the reply composer stays at the bottom. Desktop retains its sidebar layout.
+- Playwright checked rendered conversation fixtures at 375, 390, 430 and 980px:
+  no horizontal overflow; phone chat and composer match viewport width.
+- These checks use mocked API responses, not the user's authenticated radio session.
+  Confirm the live iPhone view after installing the rebuilt app.
+
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change
 either confirmed in a rendered signed-in view or explicitly reported as unverified.
