@@ -373,6 +373,10 @@ Recommended test flow:
 5. If the provider call fails, the command history should record `ai_failed` and the chat
    should get a safe fallback prompt.
 
+Local fallback note: `ping <target> in/every <N> sec` and `check <target> every half
+minute` are treated as range-test requests before calling AI, so common radio wording like
+`Can you ping OptimusPrime in 30 sec` still produces numbered confirmation choices.
+
 ---
 
 ## 9. The verification gap (read before promising anything)

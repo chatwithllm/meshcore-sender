@@ -89,6 +89,8 @@ AI INTERPRETER STATUS
   allowed controller such as OptimusPrime send a fuzzy request like "can you keep checking
   optimus every half minute". Expected behavior: the app replies with numbered
   confirmation choices; it must not start the range test until the controller replies `1`.
+- Local fallback also treats "ping OptimusPrime in 30 sec", "ping OptimusPrime every 30 sec",
+  and "check OptimusPrime every half minute" as range-test confirmation requests before calling AI.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens

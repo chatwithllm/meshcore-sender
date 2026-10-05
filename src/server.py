@@ -407,6 +407,8 @@ def _ai_prompt(text):
         "You parse MeshCore radio controller messages into JSON only. "
         "Never execute actions. Never invent targets. "
         "Allowed actions: status, range_start, range_stop, cancel, unknown. "
+        "Treat phrases like 'ping TARGET every 30 sec', 'ping TARGET in 30 sec', "
+        "'check TARGET every half minute', or 'keep checking TARGET' as range_start. "
         "For range_start, return target_queries as an array of names or ids from the provided targets, "
         "interval_sec as an integer 5-300, and prefix if clearly requested, else ping. "
         "For status/range_stop/cancel, return only the action. "
@@ -710,6 +712,31 @@ def _parse_range_command(text):
     return target_query, max(5, min(300, interval))
 
 
+def _parse_ping_range_command(text):
+    import re as _re
+    s = " ".join(str(text or "").split()).strip()
+    if not _re.search(r"\b(ping|check|checking)\b", s, flags=_re.I):
+        return None, None
+    interval = 30
+    m = _re.search(r"\b(?:in|every|each)\s+(\d{1,3})\s*(?:s|sec|secs|second|seconds)\b", s, flags=_re.I)
+    if m:
+        interval = int(m.group(1))
+        s = _re.sub(r"\b(?:in|every|each)\s+\d{1,3}\s*(?:s|sec|secs|second|seconds)\b", " ", s, flags=_re.I)
+    else:
+        m = _re.search(r"\b(?:in|every|each)\s+half\s+(?:a\s+)?minute\b", s, flags=_re.I)
+        if m:
+            interval = 30
+            s = _re.sub(r"\b(?:in|every|each)\s+half\s+(?:a\s+)?minute\b", " ", s, flags=_re.I)
+        else:
+            return None, None
+    cleaned = _re.sub(r"\b(can|could|you|please|start|run|begin|keep|checking|check|ping|target|node|contact|for|to|the)\b",
+                      " ", s, flags=_re.I)
+    target_query = " ".join(cleaned.split()).strip(" ?.,")
+    if not target_query:
+        return None, None
+    return target_query, max(5, min(300, interval))
+
+
 def _set_pending_command(source, options):
     pending = {"source": source, "options": options, "created_at": time.time(),
                "expires_at": time.time() + 300}
@@ -812,6 +839,20 @@ def _process_remote_command(message):
         _set_pending_command(source, options)
         _cmd_log("pending", text, source_key, "%d option(s)" % len(options))
         _send_command_reply(message, _format_pending_options(options, "Range test request:"))
+        return
+
+    ping_query, ping_interval = _parse_ping_range_command(text)
+    if ping_query:
+        matches = _find_command_targets(ping_query)
+        if not matches:
+            _cmd_log("ping_no_match", text, source_key, ping_query)
+            _send_command_reply(message, "I understood that as a range ping, but could not find '%s'. Try a clearer contact name." % ping_query)
+            return
+        options = [{"action": "range_start", "targets": [m["id"]],
+                    "interval": ping_interval, "prefix": "ping"} for m in matches[:5]]
+        _set_pending_command(source, options)
+        _cmd_log("ping_pending", text, source_key, "%d option(s)" % len(options))
+        _send_command_reply(message, _format_pending_options(options, "Ping/range request:"))
         return
 
     try:
