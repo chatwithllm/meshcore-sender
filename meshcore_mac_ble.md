@@ -388,6 +388,17 @@ quit and reopen MeshCore Sender before testing remote commands. The browser wind
 talking to the old Python server process until the app is restarted, which makes new parser
 fixes look like they did not work.
 
+Discovery note: the Discovery tool can send a controlled flood advert once, or repeat it
+every 5, 10, 30, or 60 minutes. After each advert the app refreshes contacts and records
+newly seen repeaters. Remote controllers can request this with messages such as
+`scan for repeaters` or `scan for repeaters every 10 minutes`; the app replies with numbered
+confirmation options before sending flood adverts. Use conservative intervals because flood
+adverts are mesh-wide traffic.
+
+Public-channel note: channel messages are broadcasts, not direct conversations. The chat UI
+shows a broadcast warning on channel threads and provides quick actions to mention the last
+sender publicly or switch to a direct contact when that sender is known.
+
 ---
 
 ## 9. The verification gap (read before promising anything)

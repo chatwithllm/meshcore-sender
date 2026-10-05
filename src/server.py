@@ -52,6 +52,21 @@ _range = {
 _range_lock = threading.Lock()
 _RANGE_LOG_MAX = 200
 
+# ---- repeater discovery state ---------------------------------------------
+_discovery = {
+    "running": False,
+    "interval": 0,
+    "last_scan_at": None,
+    "next_scan_at": None,
+    "last_ok": None,
+    "last_detail": "",
+    "known": set(),
+    "found": [],
+    "thread": None,
+    "started_by": None,
+}
+_discovery_lock = threading.Lock()
+
 _cmd_lock = threading.Lock()
 _commands = {
     "pending": None,
@@ -198,6 +213,123 @@ def _range_loop(_targets, prefix, interval):
         with _range_lock:
             if _range["running"]:
                 _range["next_due_at"] = time.time() + max(0, next_at - time.monotonic())
+
+
+def _send_advert(mode="flood"):
+    import subprocess as _sp
+    mode = (mode or "flood").strip().lower()
+    cmd = "zerohop" if mode == "zero" else "floodadv"
+    addr = os.environ.get("MESHCORE_ADDR",
+                          "DDE75E06-4BF2-DB42-7B69-B29FE29CB836")
+    proc = _sp.run(["meshcore-cli", "-a", addr, cmd],
+                   capture_output=True, text=True, timeout=120)
+    out = (proc.stdout + proc.stderr).strip()
+    return {"ok": "Advert sent" in out, "mode": mode, "detail": out[-200:]}
+
+
+def _repeater_ids(nodes):
+    return set(str(n.get("id") or "") for n in nodes or []
+               if n.get("kind") == "repeater" and n.get("id"))
+
+
+def _discovery_scan(started_by=None):
+    before = set()
+    with _discovery_lock:
+        before = set(_discovery.get("known") or set())
+    try:
+        result = _send_advert("flood")
+        info = radio_nodes(force=True)
+        nodes = info.get("nodes") or []
+        current = _repeater_ids(nodes)
+        added_ids = sorted(current - before)
+        added = [n for n in nodes if str(n.get("id") or "") in added_ids]
+        with _discovery_lock:
+            _discovery["known"] = current
+            _discovery["last_scan_at"] = time.time()
+            _discovery["last_ok"] = bool(result.get("ok")) and not bool(info.get("error"))
+            _discovery["last_detail"] = info.get("error") or result.get("detail") or ""
+            if started_by:
+                _discovery["started_by"] = started_by
+            if added:
+                existing = {x.get("id") for x in _discovery.get("found", [])}
+                _discovery["found"].extend([n for n in added if n.get("id") not in existing])
+                _discovery["found"] = _discovery["found"][-40:]
+        return {"ok": bool(result.get("ok")), "added": added, "nodes": nodes,
+                "detail": info.get("error") or result.get("detail") or ""}
+    except Exception as exc:  # noqa: BLE001 - discovery status should capture failures
+        with _discovery_lock:
+            _discovery["last_scan_at"] = time.time()
+            _discovery["last_ok"] = False
+            _discovery["last_detail"] = str(exc)
+        return {"ok": False, "added": [], "nodes": [], "detail": str(exc)}
+
+
+def _discovery_snapshot():
+    with _discovery_lock:
+        return {
+            "running": bool(_discovery.get("running")),
+            "interval": _discovery.get("interval") or 0,
+            "last_scan_at": _discovery.get("last_scan_at"),
+            "next_scan_at": _discovery.get("next_scan_at"),
+            "last_ok": _discovery.get("last_ok"),
+            "last_detail": _discovery.get("last_detail") or "",
+            "found": list(_discovery.get("found") or []),
+            "started_by": _discovery.get("started_by"),
+            "server_now": time.time(),
+        }
+
+
+def _discovery_loop(interval):
+    while True:
+        with _discovery_lock:
+            if not _discovery.get("running"):
+                return
+            _discovery["next_scan_at"] = time.time() + interval
+        deadline = time.monotonic() + interval
+        while True:
+            with _discovery_lock:
+                if not _discovery.get("running"):
+                    return
+            delay = deadline - time.monotonic()
+            if delay <= 0:
+                break
+            time.sleep(min(1, delay))
+        _discovery_scan()
+
+
+def _discovery_start(interval=0, started_by="you", run_now=True):
+    try:
+        interval = int(interval or 0)
+    except (TypeError, ValueError):
+        interval = 0
+    allowed = (0, 300, 600, 1800, 3600)
+    if interval not in allowed:
+        raise ValueError("bad discovery interval")
+    radio_nodes(force=True)
+    current = _repeater_ids(_nodes_cache.get("nodes") or [])
+    with _discovery_lock:
+        _discovery["known"] = current
+        _discovery["started_by"] = started_by or "you"
+        _discovery["interval"] = interval
+        _discovery["found"] = []
+        _discovery["running"] = bool(interval)
+        _discovery["next_scan_at"] = time.time() if interval else None
+    result = _discovery_scan(started_by=started_by) if run_now else {"ok": True, "added": []}
+    if interval:
+        t = threading.Thread(target=_discovery_loop, args=(interval,), daemon=True)
+        with _discovery_lock:
+            _discovery["thread"] = t
+            _discovery["next_scan_at"] = time.time() + interval
+        t.start()
+    return result
+
+
+def _discovery_stop():
+    with _discovery_lock:
+        was_running = bool(_discovery.get("running"))
+        _discovery["running"] = False
+        _discovery["next_scan_at"] = None
+    return {"ok": True, "was_running": was_running}
 
 
 # ---------------------------------------------------------------- config store
@@ -441,12 +573,13 @@ def _ai_prompt(text):
     system = (
         "You parse MeshCore radio controller messages into JSON only. "
         "Never execute actions. Never invent targets. "
-        "Allowed actions: status, range_start, range_stop, cancel, unknown. "
+        "Allowed actions: status, range_start, range_stop, discovery_once, discovery_start, discovery_stop, cancel, unknown. "
         "Treat phrases like 'ping TARGET every 30 sec', 'ping TARGET in 30 sec', "
         "'check TARGET every half minute', or 'keep checking TARGET' as range_start. "
         "For range_start, return target_queries as an array of names or ids from the provided targets, "
         "interval_sec as an integer 5-300, and prefix if clearly requested, else ping. "
-        "For status/range_stop/cancel, return only the action. "
+        "For discovery_start, use interval_sec of 300, 600, 1800, or 3600 only. "
+        "For status/range_stop/discovery_once/discovery_stop/cancel, return only the action. "
         "If the request is not about range testing, command status, stopping, or cancelling, return unknown. "
         "Output compact JSON with keys: action, target_queries, interval_sec, prefix, reason."
     )
@@ -562,12 +695,18 @@ def _ai_interpret_command(text):
     if not isinstance(data, dict):
         raise RuntimeError("AI response was not an object")
     action = str(data.get("action") or "unknown").strip().lower()
-    if action not in ("status", "range_start", "range_stop", "cancel", "unknown"):
+    if action not in ("status", "range_start", "range_stop", "discovery_once",
+                      "discovery_start", "discovery_stop", "cancel", "unknown"):
         action = "unknown"
     try:
         interval = int(data.get("interval_sec") or 30)
     except (TypeError, ValueError):
         interval = 30
+    if action == "discovery_start":
+        allowed_intervals = (300, 600, 1800, 3600)
+        interval = min(allowed_intervals, key=lambda v: abs(v - interval))
+    else:
+        interval = max(5, min(300, interval))
     prefix = _validate_range_prefix(data.get("prefix") or "ping")
     queries = data.get("target_queries") or []
     if isinstance(queries, str):
@@ -576,7 +715,7 @@ def _ai_interpret_command(text):
     return {
         "action": action,
         "target_queries": queries,
-        "interval": max(5, min(300, interval)),
+        "interval": interval,
         "prefix": prefix,
         "reason": str(data.get("reason") or "").strip()[:160],
     }, None
@@ -590,6 +729,15 @@ def _options_from_ai_intent(intent):
         return "cancel", []
     if action == "range_stop":
         return "pending", [{"action": "range_stop"}]
+    if action == "discovery_stop":
+        return "pending", [{"action": "discovery_stop"}]
+    if action == "discovery_once":
+        return "pending", [{"action": "discovery_once", "interval": 0}]
+    if action == "discovery_start":
+        interval = int((intent or {}).get("interval") or 600)
+        if interval not in (300, 600, 1800, 3600):
+            interval = 600
+        return "pending", [{"action": "discovery_start", "interval": interval}]
     if action == "range_start":
         options = []
         seen = set()
@@ -804,6 +952,12 @@ def _format_pending_options(options, intro):
                 idx, ", ".join(_target_label(t) for t in opt["targets"]), opt["interval"]))
         elif opt["action"] == "range_stop":
             lines.append("%d. Stop current range test" % idx)
+        elif opt["action"] == "discovery_once":
+            lines.append("%d. Scan for repeaters once" % idx)
+        elif opt["action"] == "discovery_start":
+            lines.append("%d. Scan for repeaters every %s min" % (idx, int(opt["interval"] / 60)))
+        elif opt["action"] == "discovery_stop":
+            lines.append("%d. Stop repeater discovery" % idx)
     lines.append("Reply with a number, or cancel.")
     return "\n".join(lines)
 
@@ -820,6 +974,18 @@ def _execute_command_option(option, source_label=None):
     if option["action"] == "range_stop":
         _range_stop()
         return True, "Stopped range test."
+    if option["action"] in ("discovery_once", "discovery_start"):
+        interval = int(option.get("interval") or 0)
+        result = _discovery_start(interval=interval, started_by=source_label or "remote command",
+                                  run_now=True)
+        added = result.get("added") or []
+        if interval:
+            return True, "Started repeater discovery every %s min. %s new repeater(s) found now." % (
+                int(interval / 60), len(added))
+        return True, "Repeater scan complete. %s new repeater(s) found." % len(added)
+    if option["action"] == "discovery_stop":
+        _discovery_stop()
+        return True, "Stopped repeater discovery."
     return False, "unknown command"
 
 
@@ -867,6 +1033,36 @@ def _process_remote_command(message):
         _set_pending_command(source, options)
         _cmd_log("pending", text, source_key, "stop range")
         _send_command_reply(message, _format_pending_options(options, "Stop range test?"))
+        return
+
+    if ("stop" in lower or "cancel" in lower) and ("discovery" in lower or "scan" in lower) and "repeater" in lower:
+        options = [{"action": "discovery_stop"}]
+        _set_pending_command(source, options)
+        _cmd_log("pending", text, source_key, "stop discovery")
+        _send_command_reply(message, _format_pending_options(options, "Stop repeater discovery?"))
+        return
+
+    if ("scan" in lower or "discover" in lower) and "repeater" in lower:
+        import re as _re
+        interval = None
+        m = _re.search(r"\bevery\s+(5|10|30|60)\s*(?:m|min|mins|minute|minutes)\b", lower)
+        if m:
+            interval = int(m.group(1)) * 60
+        elif _re.search(r"\bevery\s+(1|one)\s*(?:h|hr|hour)\b", lower):
+            interval = 3600
+        if interval:
+            options = [{"action": "discovery_start", "interval": interval}]
+        else:
+            options = [
+                {"action": "discovery_once", "interval": 0},
+                {"action": "discovery_start", "interval": 300},
+                {"action": "discovery_start", "interval": 600},
+                {"action": "discovery_start", "interval": 1800},
+                {"action": "discovery_start", "interval": 3600},
+            ]
+        _set_pending_command(source, options)
+        _cmd_log("pending", text, source_key, "discovery")
+        _send_command_reply(message, _format_pending_options(options, "Repeater discovery request:"))
         return
 
     if "range" in lower or "range test" in lower:
@@ -1116,16 +1312,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._session():
                 self._json(401, {"error": "unauthorized"})
                 return
-            import os as _os, subprocess as _sp
             mode = (payload or {}).get("mode") or "flood"
-            cmd = "zerohop" if mode == "zero" else "floodadv"
-            addr = _os.environ.get("MESHCORE_ADDR",
-                                   "DDE75E06-4BF2-DB42-7B69-B29FE29CB836")
-            _p = _sp.run(["meshcore-cli", "-a", addr, cmd],
-                         capture_output=True, text=True, timeout=120)
-            _out = (_p.stdout + _p.stderr).strip()
-            self._json(200, {"ok": "Advert sent" in _out, "mode": mode,
-                             "detail": _out[-200:]})
+            self._json(200, _send_advert(mode))
         elif path == "/api/range/status":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
@@ -1134,6 +1322,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(401, {"error": "unauthorized"})
                 return
             self._json(200, _range_snapshot())
+        elif path == "/api/discovery/status":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured", "setup": "/setup"})
+                return
+            if not self._session():
+                self._json(401, {"error": "unauthorized"})
+                return
+            self._json(200, _discovery_snapshot())
         elif path == "/api/commands":
             if not _auth_set():
                 self._json(428, {"error": "not_configured", "setup": "/setup"})
@@ -1358,6 +1554,40 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(409, {"error": err})
                 return
             self._json(200, result)
+        elif path == "/api/discovery/start":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            try:
+                interval = int(body.get("interval") or 0)
+                started_by = str(body.get("started_by") or "you").strip()[:40] or "you"
+                result = _discovery_start(interval=interval, started_by=started_by, run_now=True)
+            except ValueError as exc:
+                self._json(400, {"error": str(exc)})
+                return
+            self._json(200, {"ok": bool(result.get("ok")), "scan": result,
+                             "status": _discovery_snapshot()})
+        elif path == "/api/discovery/stop":
+            if not _auth_set():
+                self._json(428, {"error": "not_configured"})
+                return
+            rec = self._session()
+            if not rec:
+                self._json(401, {"error": "unauthorized"})
+                return
+            if not hmac.compare_digest(self.headers.get("X-CSRF-Token") or "", rec["csrf"]):
+                self._json(403, {"error": "bad csrf token"})
+                return
+            result = _discovery_stop()
+            self._json(200, {"ok": True, "status": _discovery_snapshot(),
+                             "was_running": result.get("was_running")})
         elif path == "/api/range/targets":
             if not _auth_set():
                 self._json(428, {"error": "not_configured"})

@@ -97,6 +97,12 @@ AI INTERPRETER STATUS
 - After rebuilding/copying the Mac app, quit and reopen MeshCore Sender before testing. If
   the old app process is still running, Safari/app UI may receive new radio messages while
   remote-command parser fixes are not active yet.
+- Discovery tool added: controlled flood advert scan once, or every 5/10/30/60 minutes.
+  It refreshes contacts after each scan and records newly seen repeaters. Remote controllers
+  can request `scan for repeaters` / `scan for repeaters every 10 minutes`, but the app still
+  requires numbered confirmation before scanning.
+- Public/channel conversations now show a broadcast delivery warning plus quick actions to
+  mention the last sender publicly or try direct when a matching contact exists.
 
 HARD CONSTRAINTS
 - Never reset, change, or ask for the user's passphrase in chat. Never handle their tokens

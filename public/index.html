@@ -191,6 +191,7 @@
           <button type="button" class="tool-tab" data-tool-tab="drawer-range">Range</button>
           <button type="button" class="tool-tab" data-tool-tab="drawer-commands">Commands</button>
           <button type="button" class="tool-tab" data-tool-tab="drawer-contacts">Contacts</button>
+          <button type="button" class="tool-tab" data-tool-tab="drawer-discovery">Discovery</button>
           <button type="button" class="tool-tab" data-tool-tab="drawer-repeater-map">Map</button>
           <button type="button" class="tool-tab" data-tool-tab="drawer-messages">Raw</button>
         </div>
@@ -352,6 +353,11 @@
     <details id="drawer-repeater-map" class="drawer">
       <summary>Repeater map</summary>
       <div class="drawer-body" id="drawer-repeater-map-body"></div>
+    </details>
+
+    <details id="drawer-discovery" class="drawer">
+      <summary>Repeater discovery</summary>
+      <div class="drawer-body" id="drawer-discovery-body"></div>
     </details>
     </section>
   </section>
@@ -1038,6 +1044,183 @@ document.addEventListener('keydown', function (e) {
   }
   setTimeout(addAdvertButtons, 400);
   document.addEventListener('click', function(){ setTimeout(addAdvertButtons, 400); }, true);
+
+  (function(){
+    var timer = null;
+    var nextAt = 0;
+    var intervalMs = 0;
+    var running = false;
+    var knownRepeaters = new Set();
+    var foundThisRun = [];
+    var tickTimer = null;
+
+    function esc(s){ return String(s||'').replace(/[&<>"']/g,function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+    function data(){
+      return (window.__mcDest && window.__mcDest.getData) ? (window.__mcDest.getData() || []) : [];
+    }
+    function repeaters(){
+      return data().filter(function(d){ return d && d.kind === 'repeater'; });
+    }
+    function snapshotKnown(){
+      repeaters().forEach(function(r){ if (r.id) knownRepeaters.add(r.id); });
+    }
+    function fmtMs(ms){
+      if (!ms || ms <= 0) return 'now';
+      var sec = Math.ceil(ms / 1000);
+      if (sec < 60) return sec + 's';
+      var min = Math.floor(sec / 60);
+      var rem = sec % 60;
+      return min + 'm' + (rem ? ' ' + rem + 's' : '');
+    }
+    function note(text, good){
+      var el = document.getElementById('disc-note');
+      if (!el) return;
+      el.textContent = text || '';
+      el.style.color = good === true ? 'var(--ok)' : good === false ? 'var(--bad)' : 'var(--mut)';
+    }
+    function render(){
+      var body = document.getElementById('drawer-discovery-body');
+      if (!body) return;
+      var reps = repeaters();
+      body.innerHTML =
+        '<div class="discovery-grid">' +
+          '<div class="discovery-card">' +
+            '<div class="dgroup">Discovery scan</div>' +
+            '<p class="disc-copy">Send controlled flood adverts, then refresh contacts to detect newly heard repeaters. Keep this modest; flood adverts are mesh-wide traffic.</p>' +
+            '<div class="disc-actions">' +
+              '<button type="button" id="disc-once">Scan now</button>' +
+              '<button type="button" class="ghost" data-disc-min="5">Every 5 min</button>' +
+              '<button type="button" class="ghost" data-disc-min="10">Every 10 min</button>' +
+              '<button type="button" class="ghost" data-disc-min="30">Every 30 min</button>' +
+              '<button type="button" class="ghost" data-disc-min="60">Every 1 hour</button>' +
+              '<button type="button" class="ghost" id="disc-stop" '+(running?'':'disabled')+'>Stop</button>' +
+            '</div>' +
+            '<div class="disc-status">' +
+              '<span class="'+(running?'disc-live':'disc-idle')+'">'+(running?'Scanning':'Idle')+'</span>' +
+              '<span id="disc-next">'+(running ? 'next scan in ' + fmtMs(nextAt - Date.now()) : 'manual or scheduled')+'</span>' +
+            '</div>' +
+            '<div id="disc-note" class="note"></div>' +
+          '</div>' +
+          '<div class="discovery-card">' +
+            '<div class="dgroup">Repeater results</div>' +
+            '<div class="disc-total">'+reps.length+' repeater'+(reps.length===1?'':'s')+' currently known</div>' +
+            '<div class="disc-found">' +
+              (foundThisRun.length ? foundThisRun.slice(-8).map(function(r){
+                return '<div><b>'+esc(r.name || r.id)+'</b><span>new this scan</span></div>';
+              }).join('') : '<div class="disc-empty">No new repeaters found in this scan session yet.</div>') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      var once = document.getElementById('disc-once');
+      if (once) once.onclick = function(){ runScan(false); };
+      var stop = document.getElementById('disc-stop');
+      if (stop) stop.onclick = stopSchedule;
+      body.querySelectorAll('[data-disc-min]').forEach(function(btn){
+        btn.onclick = function(){
+          startSchedule(Number(btn.dataset.discMin || 10));
+        };
+      });
+    }
+    function refreshCountdown(){
+      var el = document.getElementById('disc-next');
+      if (!el) return;
+      el.textContent = running ? 'next scan in ' + fmtMs(nextAt - Date.now()) : 'manual or scheduled';
+    }
+    function compareNew(){
+      var added = [];
+      repeaters().forEach(function(r){
+        if (!r.id || knownRepeaters.has(r.id)) return;
+        knownRepeaters.add(r.id);
+        added.push(r);
+        foundThisRun.push(r);
+      });
+      return added;
+    }
+    function applyStatus(status){
+      status = status || {};
+      running = !!status.running;
+      intervalMs = Number(status.interval || 0) * 1000;
+      nextAt = status.next_scan_at ? (Date.now() + Math.max(0, (status.next_scan_at - (status.server_now || 0)) * 1000)) : 0;
+      foundThisRun = status.found || foundThisRun || [];
+      render();
+      refreshCountdown();
+    }
+    function pollStatus(){
+      return api('/api/discovery/status').then(function(r){
+        if (r.status === 200) applyStatus(r.data || {});
+      }).catch(function(){});
+    }
+    function runScan(fromSchedule){
+      snapshotKnown();
+      note('Scanning for repeaters...', null);
+      return api('/api/discovery/start', {method:'POST', body:JSON.stringify({interval:0, started_by:'you'})})
+        .then(function(r){
+          if (!r.data || !r.data.ok) throw new Error((r.data && r.data.error) || (r.data && r.data.scan && r.data.scan.detail) || 'scan failed');
+          if (r.data.status) applyStatus(r.data.status);
+          var added = (r.data.scan && r.data.scan.added) || [];
+          return loadNodes(true).then(function(){ return added; });
+        }).then(function(added){
+          note(added.length ? ('Found ' + added.length + ' new repeater' + (added.length===1?'':'s')) :
+            (fromSchedule ? 'Scheduled scan complete. No new repeaters yet.' : 'Scan complete. No new repeaters yet.'), true);
+          pollStatus();
+        })
+        .catch(function(e){
+          note(String(e.message || e), false);
+        });
+    }
+    function startSchedule(minutes){
+      stopSchedule(true);
+      snapshotKnown();
+      note('Starting discovery every ' + minutes + ' min...', null);
+      render();
+      api('/api/discovery/start', {method:'POST', body:JSON.stringify({interval:minutes * 60, started_by:'you'})})
+        .then(function(r){
+          if (!r.data || !r.data.ok) throw new Error((r.data && r.data.error) || (r.data && r.data.scan && r.data.scan.detail) || 'discovery failed');
+          applyStatus(r.data.status || {});
+          note('Discovery scheduled every ' + minutes + ' min.', true);
+          return loadNodes(true);
+        }).catch(function(e){ note(String(e.message || e), false); pollStatus(); });
+      clearInterval(tickTimer);
+      tickTimer = setInterval(refreshCountdown, 1000);
+    }
+    function stopSchedule(quiet){
+      clearTimeout(timer);
+      clearInterval(tickTimer);
+      timer = null;
+      tickTimer = null;
+      if (quiet) {
+        running = false;
+        nextAt = 0;
+      } else {
+        api('/api/discovery/stop', {method:'POST', body:JSON.stringify({})})
+          .then(function(r){ applyStatus((r.data && r.data.status) || {}); note('Discovery stopped.', null); })
+          .catch(function(e){ note(String(e.message || e), false); });
+      }
+      render();
+    }
+    window.__discovery = {render: render, runScan: runScan, stop: stopSchedule};
+    setTimeout(function(){ render(); pollStatus(); }, 900);
+    setInterval(pollStatus, 15000);
+    document.addEventListener('click', function(){ setTimeout(function(){ render(); pollStatus(); }, 900); }, true);
+    var st = document.createElement('style');
+    st.textContent =
+      '.discovery-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}' +
+      '@media(max-width:760px){.discovery-grid{grid-template-columns:1fr}}' +
+      '.discovery-card{border:1px solid var(--line);border-radius:8px;background:#0c0e12;padding:12px}' +
+      '.disc-copy{margin:0 0 12px;color:var(--mut);font-size:12px;line-height:1.4}' +
+      '.disc-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}' +
+      '.disc-actions button{padding:8px 10px}' +
+      '.disc-status{display:flex;align-items:center;gap:8px;border-top:1px solid #ffffff12;padding-top:10px;font-size:12px;color:var(--mut)}' +
+      '.disc-live,.disc-idle{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-weight:800}' +
+      '.disc-live{background:#143822;color:#58c07a}.disc-idle{background:#202532;color:#aab2c0}' +
+      '.disc-total{font-size:13px;color:var(--ink);font-weight:800;margin-bottom:8px}' +
+      '.disc-found{display:grid;gap:6px}' +
+      '.disc-found div{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid #ffffff12;padding:6px 0}' +
+      '.disc-found b{font-size:13px}.disc-found span{font-size:11px;color:var(--ok)}' +
+      '.disc-empty{color:var(--mut);font-size:12px;border-bottom:0!important;padding:0!important}';
+    document.head.appendChild(st);
+  })();
 
   function addRadioButtons(){
     var bar = document.getElementById('radio-bar');
@@ -1893,6 +2076,7 @@ document.addEventListener('keydown', function (e) {
                        if (window.contactRefreshOptions) window.contactRefreshOptions();
                        if (window.cmdRender && window.CMD_STATE) window.cmdRender(window.CMD_STATE);
                        renderRepeaterMap();
+                       if (window.__discovery && window.__discovery.render) window.__discovery.render();
                      },
                      nameFor: function(id){ var f = DATA.filter(function(i){ return i.id === id; })[0];
                        if (!f) return null;
@@ -2102,15 +2286,64 @@ document.addEventListener('keydown', function (e) {
     return parts.filter(Boolean).join(' · ');
   }
 
+  function isChannelThread(id) {
+    return String(id || '').indexOf('chan:') === 0;
+  }
+
+  function lastInboundSender(id) {
+    var msgs = (threads[id] || []).slice().reverse();
+    for (var i = 0; i < msgs.length; i++) {
+      if (msgs[i].dir === 'in' && msgs[i].who && msgs[i].who !== 'you') return msgs[i].who;
+    }
+    return '';
+  }
+
+  function renderPublicHint() {
+    var box = document.getElementById('cv-public-hint');
+    if (!box) return;
+    if (!activeId || !isChannelThread(activeId)) {
+      box.classList.add('hide');
+      box.innerHTML = '';
+      return;
+    }
+    var sender = lastInboundSender(activeId);
+    var contact = sender ? findContactForScope(sender) : null;
+    box.classList.remove('hide');
+    box.innerHTML =
+      '<div><b>Channel broadcast</b><span>Replies may not reach the original sender. Use mention or direct when possible.</span></div>' +
+      '<div class="cv-hint-actions">' +
+        (sender ? '<button type="button" class="ghost" id="cv-mention">Mention '+esc(sender)+'</button>' : '') +
+        (contact ? '<button type="button" class="ghost" id="cv-direct">Try direct</button>' : '') +
+      '</div>';
+    var mention = document.getElementById('cv-mention');
+    if (mention) mention.onclick = function(){
+      var inp = document.getElementById('cv-compose');
+      if (!inp) return;
+      var prefix = '@[' + sender + '] ';
+      if (inp.value.indexOf(prefix) !== 0) inp.value = prefix + inp.value;
+      inp.focus();
+    };
+    var direct = document.getElementById('cv-direct');
+    if (direct && contact) direct.onclick = function(){
+      activeId = contact.id;
+      markRead(activeId);
+      renderSidebar();
+      renderThread(true);
+      setActiveHeader();
+    };
+  }
+
   function setActiveHeader(){
     var hdr = document.getElementById('cv-hdr');
     if (!hdr) return;
     if (!activeId) {
       hdr.innerHTML = '<div><b>Select a conversation</b><span>Choose a contact or channel on the left.</span></div>';
+      renderPublicHint();
       return;
     }
     var c = contacts.find(function(x){return x.id===activeId;}) || {id:activeId, name:activeId};
     hdr.innerHTML = '<div><b>'+esc(displayName(c))+'</b><span>'+esc(activeSubtitle(c))+'</span></div>';
+    renderPublicHint();
   }
 
   function routeLabel(m) {
@@ -2480,8 +2713,9 @@ document.addEventListener('keydown', function (e) {
           '<div id="cv-list"></div>' +
         '</div>' +
         '<div id="cv-main">' +
-          '<div id="cv-chat-stack">' +
-            '<div id="cv-hdr">Select a conversation</div>' +
+            '<div id="cv-chat-stack">' +
+              '<div id="cv-hdr">Select a conversation</div>' +
+            '<div id="cv-public-hint" class="hide"></div>' +
             '<div id="cv-thread"><div class="cv-empty">Select a contact to start.</div></div>' +
             '<div id="cv-compose-row">' +
               '<textarea id="cv-compose" placeholder="Type a reply…" rows="2"></textarea>' +
@@ -2597,6 +2831,12 @@ document.addEventListener('keydown', function (e) {
     '#cv-side-head b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--mut)}' +
     '#cv-side-head span{display:block;margin-top:1px;color:#737d8f;font-size:11px}' +
     '#cv-side-head button{padding:5px 9px;font-size:12px;border-radius:6px}' +
+    '#cv-public-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:#101723;color:var(--mut);font-size:12px}' +
+    '#cv-public-hint b{display:block;color:var(--ink);font-size:12px;margin-bottom:2px}' +
+    '#cv-public-hint span{display:block;line-height:1.25}' +
+    '#cv-public-hint.hide{display:none}' +
+    '.cv-hint-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}' +
+    '.cv-hint-actions button{padding:5px 8px;font-size:11px;border-radius:6px}' +
     '#cv-search{width:100%;background:#11151d;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-size:12px}' +
     '#cv-search:focus{outline:none;border-color:var(--accent)}' +
     '#cv-list{min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:3px}' +
