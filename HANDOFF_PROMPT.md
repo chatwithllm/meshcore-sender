@@ -198,6 +198,18 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
 - ESPHome dashboard uses WebSocket ws commands (not legacy edit/compile REST).
   firmware/install returns the COMPILE job and queues a dependent UPLOAD job:
   verify BOTH exit codes before reporting deployment. No pending jobs at checkpoint.
+- RESOLVED CHECKPOINT: user saved the current radio PIN in ESPHome Secrets.
+  Recompiled (851caab9d79f) and uploaded (0d8974e42c2f), both exit 0. The SDK
+  handshake returns SELF_INFO, radio name MacMini; contacts were fetched over the
+  authenticated BLE bridge. Never print or commit the live PIN.
+- Integration 0.3.1 (7654531) fixes the SDK's short default contact retrieval wait:
+  explicit get_contacts(timeout=30), checked for errors before completing setup.
+  Thirteen local tests pass. Deployed through HACS, config checked, HA restarted.
+- Config entry 01M47GQ1BN3ND5XGNKKG3V7C2B, title MeshCore BLE bridge, is LOADED.
+  Radio connected is ON; select.meshcore_sender_range_test_target has 94 choices
+  and is set to OptimusPrime. number.meshcore_sender_range_test_interval is 30.
+  Range running is OFF; sent/ACK counts 0. No test messages were sent. Next live
+  check is a deliberate Start/Stop test with receiver ACK/timing verification.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change
