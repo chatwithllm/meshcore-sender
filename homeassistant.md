@@ -15,6 +15,18 @@ below cannot connect to the radio with the host's current Bluetooth setup.
 Deployment is pending either a local Bluetooth adapter or a transport that uses
 Home Assistant's proxy-capable Bluetooth APIs. No App has been installed.
 
+## HACS installation verified (2026-10-05)
+
+HACS 2.0.5 registered `chatwithllm/meshcore-sender` as a custom Integration
+repository (ID `1403528253`) and installed revision `30ac14c` under
+`/config/custom_components/meshcore_sender`. HACS reports `installed: true`.
+The live Home Assistant config-flow endpoint loaded the integration and returned
+the user form with `url` and `passphrase` fields. The temporary validation flow
+was removed. No Home Assistant restart was required for this validation.
+
+Installation is complete, but no MeshCore config entry has been created and no
+radio has been connected on Home Assistant. Proxy support is still pending.
+
 This provides two parts: a Supervisor-managed App that runs the existing MeshCore
 server on Home Assistant OS, and a custom integration with dashboard entities and
 automation actions. The Mac is no longer needed once the radio connects to this App.

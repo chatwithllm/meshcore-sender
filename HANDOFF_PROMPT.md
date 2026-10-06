@@ -163,6 +163,10 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
   apollo-msr-2-174b84. No local scanner was reported. The prepared App cannot use
   these proxies; do not install/start it expecting radio connectivity. Next work
   needs proxy-aware Bluetooth transport inside HA or a local adapter.
+- User requested HACS installation; completed through HACS WebSocket APIs on
+  live HA. Repo ID 1403528253, installed revision 30ac14c, HACS 2.0.5.
+  Live config flow loads its URL/passphrase form without HA restart. Temporary
+  validation flow removed. No configured MeshCore entry or radio connection yet.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change
