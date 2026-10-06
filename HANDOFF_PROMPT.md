@@ -1,6 +1,11 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.2)
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
+- Version 0.5.3 adds Map name/nearest/farthest sorting, based on unrounded
+  distances with stable tie-breaking. Without a reference, distance modes are
+  disabled and revert to A-Z. Filter/poll/tab changes retain the chosen mode.
+  Map list height is responsive (480-700px desktop, 360-560px mobile) and the
+  desktop map stretches with the sidebar. Four-width browser checks cover both.
 - Version 0.5.2 adds straight-line km/mi distances to each Map list row. Clicking
   a marker/row changes the reference; the Distance from dropdown can choose any
   valid GPS repeater or None. Reference is independent of state/name filtering

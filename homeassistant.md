@@ -1,5 +1,19 @@
 # Home Assistant
 
+## Map Sorting And Height (0.5.3)
+
+Map **Sort** offers Name A-Z, Name Z-A, Nearest first and Farthest first.
+Distance sorting uses unrounded geodesic metres from **Distance from**, with
+deterministic name/ID tie-breaking. Selecting a new reference recalculates the
+order. Sorting survives state/name filtering, polling and tab changes. With no
+valid reference, distance modes are disabled and revert to Name A-Z.
+
+The repeater list is now viewport-responsive: 480-700px on desktop and 360-560px
+on phones, instead of 320/240px. The desktop map expands to match the taller
+sidebar; phones retain the compact 340px map and stack the taller list below it.
+Four-width browser checks verify ordering, reference clearing, persistence and
+minimum list heights alongside existing map/distance checks.
+
 ## Repeater Distances (0.5.2)
 
 Selecting a repeater marker or list row sets **Distance from** to that repeater.
