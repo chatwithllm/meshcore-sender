@@ -6,14 +6,14 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 ## Current Checkpoint
 
 - Active product: native Home Assistant integration and `/meshcore` sidebar.
-- HA integration version: **0.6.1**, HACS-installed code revision **`6bb5dcd`**.
+- HA integration version: **0.6.2**, HACS-installed code revision **`24937b9`**.
   The later bridge transport fix below changes ESPHome firmware, not HA code;
   it does not require an HA restart.
-- Deployment: HACS install, verified HA backup **`2fa9ba3d`**, configuration check,
+- Deployment: HACS install, verified HA backup **`f889edd7`**, configuration check,
   restart and radio reconnection completed. Registered frontend:
-  `/meshcore_sender_static/workspace.js?v=0.6.1`. Startup/reconnection was verified
-  after the initial three-minute deployment verifier expired; no second restart
-  was issued. Panel module URL is nested under `config._panel_custom` in get_panels.
+  `/meshcore_sender_static/workspace.js?v=0.6.2`. Radio connection and exact saved
+  controller/favorite/AI settings were verified after restart. Panel module URL
+  is nested under `config._panel_custom` in get_panels.
 - Latest live check: **remote control enabled**, **two approved controllers**,
   **three favorites**, **MeshCore AI Google selected**, **range test stopped**,
   radio available with **142 contacts/channels**, **zero pending requests**.
@@ -43,6 +43,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 | Inbox | Persistent incoming/outgoing conversations, replies, name resolution when a matching contact exists, delivery states and replay deduplication. |
 | Compose and contacts | Multiple recipients, actual radio channel names, search/type filters, name sorting and persisted favorites. |
 | Range tests | Multiple targets, 5-300-second interval, prefix, starter attribution, countdown, per-target sent/ACK/broadcast statistics and log. |
+| Stop summaries | 0.6.2: start/stop actor and HA/LoRa origin, honest attempts/DM ACK/channel TX counts, final packets to tested targets, remote stopper reply deduplication and final HA display. |
 | Remote commands | Commands tab, persistent public-key-bound direct controllers, local command parsing, expiring confirmation, cancellation, queue/rate limits and recent outcomes. |
 | Numbered targets | 0.6.1 deployed: favorite contacts/channels, stable numbered menu, next/back pages, multiple selections and interval override; a separate confirmation still gates execution. |
 | HA AI reuse | Tool-free conversation-agent selector, validated JSON proposals, fallback-only AI interpretation and non-transmitting preview. Separate Google/Codex subentries reuse their existing HA credentials. |
@@ -50,7 +51,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 | Runtime PIN | Masked admin dialog and persistent bridge override, without rebuilding firmware for subsequent PIN changes. |
 | BLE reply truncation | Updated bridge firmware preserves complete MeshCore commands instead of independent 20-byte writes. HA reconnection verified; recipient-side retry still required. |
 | Repeater map | Advertised GPS, marker/list selection, persistent popup close, local state classification/filter, reference-based km/mi distances, name/distance sorting and taller responsive list. |
-| Verification | 83 Python tests, compiled pinned-upstream bridge frame check, geography tests and four-width Chromium fixtures pass. Earlier live Chromium/Safari-WebKit Commands checks at 390/1366px also passed. |
+| Verification | 99 Python tests, compiled pinned-upstream bridge frame check, geography tests and four-width Chromium fixtures (including stop summary) pass. Earlier live Chromium/Safari-WebKit Commands checks at 390/1366px also passed. |
 | Documentation | Setup, security boundaries, deployment history and agent handover are saved in GitHub. |
 
 Confirmation applies to range start/stop. `status` is read-only and sends a reply;
@@ -60,7 +61,7 @@ range test. AI cannot access household-control tools through the MeshCore adapte
 
 ## In Progress / Awaiting Validation
 
-- **0.6.2 stop summaries: implemented, deployment pending.** Explicit HA/LoRa
+- **0.6.2 stop summaries: deployed, handset acceptance pending.** Explicit HA/LoRa
   stops capture starter/stopper and sources, attempts, direct ACKs and channel
   broadcasts without claiming channel delivery. Summary goes to tested targets;
   a remote stopper receives it once as the command reply. HA shows the final
@@ -68,8 +69,9 @@ range test. AI cannot access household-control tools through the MeshCore adapte
   stops do not resend. In-flight cancellation is unconfirmed, summary messages
   do not count as pings, and shutdown/unload does not send notifications. Tests:
   99 Python checks; four-width browser summary fixture validation. Deployment
-  must verify stopped/not-finishing state, backup/config check, restart/reconnect
-  and controller/favorite retention. No live stop-summary test has been sent.
+  verified stopped state, backup `f889edd7`, config check, restart/reconnect and
+  exact controller/favorite/AI retention. Live radio stop-summary receipt remains
+  unverified; no agent-issued start, stop or summary test was sent.
 
 No coding work is currently in flight. These items need user participation or a
 deliberate follow-up, and must not be described as verified end to end:
@@ -114,10 +116,18 @@ deliberate follow-up, and must not be described as verified end to end:
 
 ### Next Acceptance Test
 
-0.6.1 is now published and deployed. Test `range test` -> numbered menu -> target
+0.6.2 is now published and deployed. Test `range test` -> numbered menu -> target
 number -> separate confirmation, a channel/multiple targets, `next`/`back`,
 `1 every 60s`, invalid numbers and cancel. No menu-specific live transmissions
 were performed by the agent.
+
+For stop summaries, run a short deliberate test, stop from LoRa with confirmation,
+and verify start/stop actors and LoRa origin on the handset and in HA. Separately
+stop another test from the HA sidebar or entity button and verify the authenticated
+HA user and HA origin. Repeat stop once while idle: it must not resend the summary.
+For a channel target, verify TX count is labelled no delivery ACK. Final summary
+packets must not inflate ping counters. HA shutdown/unload intentionally sends no
+radio summaries, and the in-memory Range result clears on restart.
 
 1. Verify OptimusPrime is one of the approved controllers in Commands. Preserve
    the user's enabled settings and tool-free agent selection.

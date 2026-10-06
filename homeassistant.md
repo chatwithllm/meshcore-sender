@@ -1,6 +1,6 @@
 # Home Assistant
 
-## Range Stop Summaries (0.6.2, Awaiting Deployment)
+## Range Stop Summaries (0.6.2)
 
 Explicit stops from a LoRa controller or HA sidebar/button/service produce a
 final summary: starter and origin (HA/LoRa), stopper and origin, total transmission
@@ -22,9 +22,13 @@ stop proposal does not stop or summarize anything.
 99 Python tests pass, including service/button actor attribution, mixed channel
 and DM counts, interrupted sends, simultaneous stops, notification failure and
 controller deduplication. Browser fixtures cover the final summary at four widths.
-Live radio stop-summary receipt still requires user acceptance after deployment.
+Deployed HACS revision `24937b9` after verified backup `f889edd7`, HA configuration
+check and restart. Verified radio availability, 142 contacts/channels, range
+stopped, module URL v=0.6.2 and exact controller/favorite/AI retention. No
+agent-issued range start/stop or test transmission was performed. Live radio
+summary receipt still requires user acceptance for both HA and LoRa stops.
 
-## Current Status (0.6.1)
+## Current Status (0.6.2)
 
 ### Numbered target menus (0.6.1)
 
@@ -69,7 +73,7 @@ deferred pending an authorization design.
 See [Project status and handover](PROJECT_STATUS.md) for completed features,
 acceptance steps, prioritized pipeline and agent resumption instructions. The
 version-specific sections below include historical deployment details; the current
-deployed version is 0.6.1, not the older map releases.
+deployed version is 0.6.2, not the older map releases.
 
 ## Map Sorting And Height (0.5.3)
 
