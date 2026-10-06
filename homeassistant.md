@@ -41,9 +41,11 @@ button or the Home Assistant host's LAN address on port 8788.
 
 ## Install dashboard controls
 
-1. Place the repository's `custom_components/meshcore_sender` folder under your
-   Home Assistant `/config/custom_components/` directory using your existing file
-   access tool. This component is not currently distributed through HACS.
+1. In HACS, open Custom repositories and add
+   `https://github.com/chatwithllm/meshcore-sender` with type **Integration**.
+   Search for **MeshCore Sender** and download it. It is a custom repository,
+   not a HACS default listing. Alternatively, install the repository's
+   `custom_components/meshcore_sender` folder under `/config/custom_components/`.
 2. Restart Home Assistant. Open Settings > Devices & Services > Add Integration,
    search **MeshCore Sender**, and enter `http://homeassistant.local:8788` (or the
    host's LAN IP and configured port) and the server passphrase.
