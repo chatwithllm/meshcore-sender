@@ -18,13 +18,15 @@ const path = require('node:path');
       const now = Date.now()/1000;
       const state = {entry_id:'fixture', entries:[{id:'fixture',name:'Radio'}],available:true,
         health:{radio_ok:true},history_supported:true,pin_update_supported:true, favorites:[], settings:{interval:30,target:'dm:OptimusPrime'},
-        nodes:[{id:'dm:OptimusPrime',name:'OptimusPrime',kind:'node'}, {id:'chan:1',name:'Family Mesh',kind:'private'},
+        nodes:[{id:'dm:OptimusPrime',name:'OptimusPrime',kind:'node',public_key:'a'.repeat(64)}, {id:'chan:1',name:'Family Mesh',kind:'private'},
           {id:'dm:Long',name:'A rather long contact name for mobile overflow checks',kind:'repeater'},
           {id:'dm:Bethpage Solar',name:'Bethpage Solar',kind:'repeater',lat:36.38932,lon:-86.262},
           {id:'dm:BlairOneW',name:'BlairOneW',kind:'repeater',lat:39.70739,lon:-85.99339},
           {id:'dm:Toronto',name:'Toronto',kind:'repeater',lat:43.6532,lon:-79.3832}],
         messages:[{id:'one',conversation:'pk:abc',target:'dm:OptimusPrime',name:'OptimusPrime',sender:'OptimusPrime',text:'<img src=x onerror="window.hacked=true"> Hello',received_at:now,direction:'in',status:'received'},
           {id:'two',conversation:'chan:1',target:'chan:1',name:'Family Mesh',sender:'You',text:'Radio check',received_at:now-100,direction:'out',status:'broadcast'}],
+        remote:{enabled:false,controllers:[],agent_id:'',pending:0,history:[]},
+        agents:[{id:'conversation.safe',name:'MeshCore AI',safe:true},{id:'conversation.unsafe',name:'Home control AI',safe:false}],
         range:{server_now:now,running:false,targets:[],sent:0,acked:0,interval:30,log:[],per_target:{}}};
       document.querySelector('meshcore-workspace').hass = {callWS:async msg => {
         window.calls.push(msg);
@@ -34,6 +36,8 @@ const path = require('node:path');
           per_target:{'dm:OptimusPrime':{sent:3,acked:2}},log:[]};
         if(msg.action==='stop') state.range.running=false;
         if(msg.action==='favorite') state.favorites=msg.enabled?msg.targets:[];
+        if(msg.action==='remote_settings') state.remote={...state.remote,enabled:msg.enabled,
+          controllers:msg.controllers.map(key=>({key,name:'OptimusPrime'})),agent_id:msg.agent_id};
         return structuredClone(state);
       }};
     });
@@ -128,6 +132,21 @@ const path = require('node:path');
     assert.equal(await page.locator('#map-origin').inputValue(),'dm:Toronto');
     assert.ok((await page.locator('[data-map-node="dm:Toronto"] .map-distance').textContent()).includes('0.0 km'));
     await page.getByRole('button',{name:'Contacts',exact:true}).click();
+    await page.locator('#search').fill('optimus');
+    await page.getByRole('button',{name:'Favorite OptimusPrime',exact:true}).click();
+    await page.getByRole('button',{name:'Commands',exact:true}).click();
+    await page.locator('#remote-enabled').check();
+    await page.locator('[data-controller]').check();
+    await page.locator('#remote-agent').selectOption('conversation.safe');
+    assert.equal(await page.locator('#remote-agent option[value="conversation.unsafe"]').isDisabled(),true);
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('#remote-enabled').isChecked(),true,'Draft survives polling');
+    await page.getByRole('button',{name:'Save',exact:true}).click();
+    assert.deepEqual(await page.evaluate(()=>window.calls.find(c=>c.action==='remote_settings').controllers),['a'.repeat(64)]);
+    const commandsOverflow=await page.evaluate(()=>[...document.querySelector('meshcore-workspace').shadowRoot.querySelectorAll('#remote-form,.controller-list,#remote-agent,.command-history')].filter(el=>{const r=el.getBoundingClientRect();return r.right>innerWidth+1||r.left<0}).length);
+    assert.equal(commandsOverflow,0);
+    assert.equal(await page.getByRole('heading',{name:'Recent commands'}).isVisible(),true);
+    await page.screenshot({path:`/tmp/meshcore-workspace-commands-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Map',exact:true}).click();
     await page.locator('[data-map-node="dm:BlairOneW"]').waitFor();
     assert.equal(await page.locator('#map-origin').inputValue(),'dm:Toronto','Explicit reference survives tab re-entry');

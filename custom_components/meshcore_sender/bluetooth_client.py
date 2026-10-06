@@ -120,11 +120,19 @@ class NativeMeshCoreClient:
                     text = body
                 else:
                     sender = "Channel member"
-            self.history.append({"conversation": conversation, "target": target,
+            message_id = self.history.append({"conversation": conversation, "target": target,
                                  "name": name, "sender": sender, "text": text,
                                  "direction": "in", "pubkey_prefix": prefix,
                                  "sender_timestamp": payload.get("sender_timestamp"),
                                  "hops": payload.get("path_len"), "status": "received"})
+            if message_id and channel is None and contact and hasattr(self, "remote"):
+                # Prefixes identify senders on the companion wire. Reject collisions.
+                matches = [c for c in self.mc.contacts.values()
+                           if isinstance(prefix, str) and len(prefix) >= 12
+                           and c.get("public_key", "").startswith(prefix)]
+                if len(matches) == 1 and matches[0].get("public_key") == contact.get("public_key"):
+                    self.remote.submit(contact["public_key"], name, text, payload.get("sender_timestamp"),
+                        lambda coro: self.hass.async_create_background_task(coro, "MeshCore remote commands"))
         self.hass.bus.async_fire("meshcore_sender_message", {"address": self.address,
                                                              **self.last_message})
 
@@ -135,6 +143,9 @@ class NativeMeshCoreClient:
             if name:
                 node = {"id": "dm:" + name, "name": name,
                         "kind": {2: "repeater", 3: "room"}.get(contact.get("type"), "node")}
+                key = contact.get("public_key")
+                if isinstance(key, str) and len(key) == 64:
+                    node["public_key"] = key
                 try:
                     lat, lon = float(contact.get("adv_lat")), float(contact.get("adv_lon"))
                     # The SDK already converts the wire's microdegrees to degrees.
@@ -226,6 +237,9 @@ class NativeMeshCoreClient:
             raise MeshCoreError(str(error) or "Radio connection failed") from error
 
     async def close(self):
+        if hasattr(self, "remote"):
+            await self.remote.close()
+            await self.remote_store.async_save(self.remote.snapshot())
         await self.range.stop()
         async with self.lock:
             if self.mc:

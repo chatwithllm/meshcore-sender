@@ -162,7 +162,10 @@ or PIN-capable BLE bridge connection.
   statistics and a transmission log. The Range tab signals an active test even
   when another view is open. Channel broadcasts never count as receiver ACKs.
 - **Contacts:** searchable contacts/channels and persisted favorites. Favorites
-  do not authorize remote commands; controller/AI migration remains separate.
+  do not authorize remote commands until selected and saved in Commands.
+- **Commands (0.6.0):** persistent approved direct-contact controllers, optional
+  HA conversation-agent interpretation, confirmation/cancellation, command history
+  and a non-transmitting AI preview.
 
 History is retained in Home Assistant's native Store, independently for each config
 entry, capped at 1,000 messages. Replayed queued messages are deduplicated by sender,
@@ -177,9 +180,51 @@ workspace test targets, prefix and interval persist. The native inbox and favori
 are not implemented for **Existing MeshCore server** entries; their server UI
 remains the interface for conversation history.
 
-Remote-command/controller management, AI interpretation, contact import/export,
-and discovery scans have **not** yet been migrated into this native
-workspace. The original Mac/server implementation remains available in the repo.
+Contact import/export and discovery scans have **not** yet been migrated into this
+native workspace. The original Mac/server implementation remains available in the repo.
+
+### Remote commands and existing HA AI (0.6.0)
+
+1. In Contacts, favorite a direct contact such as OptimusPrime.
+2. In Commands, select that controller, enable remote control, choose an optional
+   AI interpreter, then Save. A favorite alone never grants permission.
+3. From that contact, send `range test OptimusPrime every 30s`. The radio replies
+   with the proposal. Send `1` or `confirm` within two minutes to start it.
+4. `status` reports the current test without changing it. `stop range test` also
+   requires confirmation. `cancel` clears a pending request but does not stop a
+   running test. Multiple targets: `range test OptimusPrime and Family every 30s`
+   (Family must exactly match an available channel/contact name).
+
+Permissions bind to full radio contact public keys, not advertised names. Controller
+permissions, enabled state, agent choice and the last 100 command outcomes persist
+in a per-entry HA Store; pending confirmations never survive restart. Queued inbox
+messages need a source timestamp within the last 120 seconds. Keep controller clocks
+correct; older/future/missing-timestamp messages remain in Inbox but cannot control
+the node. Incoming duplicate messages, ambiguous key prefixes and channel messages
+cannot trigger commands. **Channel-based controllers are intentionally not enabled:**
+a channel sender's displayed name is not individually authenticated. Controllers may
+still choose channels as range-test targets; broadcasts never imply delivery ACKs.
+
+Standard commands are handled locally. AI is fallback-only and returns JSON proposals
+limited to status/start/stop/clarify/cancel; targets and 5-300-second intervals are
+validated again before execution. Requests are rate-limited, bounded to eight queued
+commands, and provider waits time out after 25 seconds. Provider errors never cause
+an automatic range test. Starter attribution is `Remote: <contact name>`.
+
+The AI selector reuses HA-managed credentials, **not** Mac API keys. Supported
+adapters currently include tool-free Codex Conversation, Google, OpenAI and Anthropic
+conversation subentries. Agents with home-control APIs or unknown implementations
+are blocked, with the check repeated before each provider call. Create a separate
+conversation subentry with no Home Assistant control APIs; do not turn off controls
+on an existing household assistant. Claude Terminal is not a conversation agent.
+Each request uses a new conversation so radio senders cannot share AI chat context.
+AI preview consumes a provider request but neither sends a radio message nor creates
+a pending command. Radio message text and available target names are sent to the
+selected provider; the ordinary HA agent's own prompt also applies.
+
+Live radio confirmation/start/stop must be tested deliberately by the user after
+enabling a controller. Browser fixtures and AI preview are safe checks, not a claim
+that remote delivery or execution has been field-tested.
 
 Verification: local Python tests cover incoming messages during connection startup,
 history bounds/replay handling, delivery semantics, authenticated starter attribution,

@@ -1,5 +1,6 @@
 """Authenticated HA sidebar and persistent native-radio inbox."""
 
+import asyncio
 from pathlib import Path
 
 import voluptuous as vol
@@ -10,6 +11,8 @@ from homeassistant.helpers.storage import Store
 from .const import DOMAIN
 from .history import MessageHistory
 from .bridge import find_pin_bridge, update_radio_pin
+from .remote_commands import RemoteCommands
+from .ai_agent import interpret, list_agents, agent_safe
 
 STATE_KEY = DOMAIN + "_workspace"
 
@@ -25,16 +28,52 @@ async def async_attach_history(hass, entry, client):
     client.history_store = store
 
 
+async def async_attach_remote(hass, entry, coordinator):
+    client = coordinator.client
+    if not hasattr(client, "history"):
+        return
+    store = Store(hass, 1, f"{DOMAIN}.remote.{entry.entry_id}")
+
+    async def send(key, text):
+        matches = [c for c in client.mc.contacts.values() if c.get("public_key") == key] if client.mc else []
+        if len(matches) != 1:
+            raise ValueError("Controller is no longer available")
+        name = matches[0].get("adv_name")
+        if not name or sum(c.get("adv_name") == name for c in client.mc.contacts.values()) != 1:
+            raise ValueError("Controller name is ambiguous")
+        return await client.send_one("dm:" + name, text)
+
+    async def execute(proposal, name):
+        if proposal["action"] == "status":
+            status = client.range.snapshot()
+            if not status["running"]:
+                return "Range test idle."
+            return (f"Range test running: {len(status['targets'])} targets, every {status['interval']}s. "
+                    f"{status['sent']} sent, {status['acked']} ACKs.")
+        if proposal["action"] == "start" and client.range.snapshot()["running"]:
+            return "A test is already running. Stop it before starting another."
+        path = "/api/range/start" if proposal["action"] == "start" else "/api/range/stop"
+        await coordinator.action(path, {**proposal, "started_by": "Remote: " + name})
+        return "Range test started." if proposal["action"] == "start" else "Range test stopped."
+
+    client.remote = RemoteCommands(client._nodes, send, execute,
+        lambda agent, text, nodes: interpret(hass, agent, text, nodes), await store.async_load())
+    client.remote.changed = lambda: store.async_delay_save(client.remote.snapshot, 2)
+    client.remote_store = store
+
+
 @websocket_api.websocket_command({
     vol.Required("type"): "meshcore_sender/workspace",
     vol.Optional("entry_id"): str,
     vol.Optional("action", default="snapshot"): vol.In(
-        ["snapshot", "send", "start", "stop", "favorite"]),
+        ["snapshot", "send", "start", "stop", "favorite", "remote_settings", "preview_command"]),
     vol.Optional("targets"): [str],
     vol.Optional("text"): str,
     vol.Optional("prefix", default="ping"): str,
     vol.Optional("interval", default=30): vol.All(int, vol.Range(min=5, max=300)),
     vol.Optional("enabled", default=True): bool,
+    vol.Optional("controllers"): [str],
+    vol.Optional("agent_id", default=""): str,
 })
 @websocket_api.require_admin
 @websocket_api.async_response
@@ -48,6 +87,7 @@ async def websocket_workspace(hass, connection, msg):
     try:
         client = chosen.client
         action = msg["action"]
+        preview = None
         if action == "send":
             await chosen.action("/api/send", {"targets": msg.get("targets", []),
                                               "text": msg.get("text", "")})
@@ -69,6 +109,41 @@ async def websocket_workspace(hass, connection, msg):
                 raise ValueError("Choose an available native-radio contact")
             for target in targets:
                 client.history.favorite(target, msg["enabled"])
+        elif action == "remote_settings":
+            if not hasattr(client, "remote"):
+                raise ValueError("Remote commands require a native radio")
+            selected = msg.get("controllers", [])
+            if len(selected) != len(set(selected)) or len(selected) > 32:
+                raise ValueError("Choose up to 32 distinct controllers")
+            nodes = client._nodes() if client.mc else []
+            controllers = []
+            for key in selected:
+                matches = [n for n in nodes if n.get("public_key") == key and n["id"] in client.history.data["favorites"]]
+                saved = [c for c in client.remote.data["controllers"] if c["key"] == key]
+                if len(matches) == 1:
+                    controllers.append({"key": key, "name": matches[0]["name"]})
+                elif len(saved) == 1:
+                    controllers.extend(saved)
+                else:
+                    raise ValueError("Choose a favorited direct contact")
+            agent_id = msg["agent_id"]
+            if agent_id and not agent_safe(hass, agent_id):
+                raise ValueError("Choose a supported AI agent with Home Assistant control disabled")
+            if msg["enabled"] and not controllers:
+                raise ValueError("Select at least one controller")
+            client.remote.configure(msg["enabled"], controllers, agent_id)
+            await client.remote_store.async_save(client.remote.snapshot())
+        elif action == "preview_command":
+            if not hasattr(client, "remote"):
+                raise ValueError("Native radio required")
+            text = msg.get("text", "").strip()
+            if not text or len(text.encode()) > 150:
+                raise ValueError("Enter a command of 1 to 150 bytes")
+            try:
+                proposal = await asyncio.wait_for(interpret(hass, msg["agent_id"], text, client._nodes()), 25)
+                preview = client.remote.validate(proposal)
+            except Exception:
+                raise ValueError("AI preview failed. No radio action was taken. Check agent availability and sign-in.") from None
         data = chosen.data or {}
         history = client.history.snapshot() if hasattr(client, "history") else {"messages": [], "favorites": []}
         if hasattr(client, "mc") and client.mc:
@@ -91,6 +166,9 @@ async def websocket_workspace(hass, connection, msg):
                          "prefix": chosen.setting("workspace_prefix", "ping")},
             "range": await client.request("GET", "/api/range/status"),
             "history_supported": hasattr(client, "history"), **history,
+            "remote": client.remote.snapshot() if hasattr(client, "remote") else None,
+            "agents": list_agents(hass),
+            "preview": preview,
         })
     except Exception as error:
         connection.send_error(msg["id"], "meshcore_error", str(error) or "Radio action failed")
@@ -132,7 +210,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.5.3",
+            module_url="/meshcore_sender_static/workspace.js?v=0.6.0",
             require_admin=True,
         )
         state["panel"] = True

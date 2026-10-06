@@ -11,7 +11,7 @@ from .api import MeshCoreClient, MeshCoreError
 from .const import (CONF_ADDRESS, CONF_CONNECTION, CONF_HOST, CONF_PORT,
                     CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS)
 from .coordinator import MeshCoreCoordinator
-from .workspace import async_attach_history, async_setup_workspace, async_remove_workspace
+from .workspace import async_attach_history, async_attach_remote, async_setup_workspace, async_remove_workspace
 
 
 async def async_setup(hass, config):
@@ -34,6 +34,7 @@ async def async_setup_entry(hass, entry):
                                entry.data[CONF_PASSPHRASE])
     coordinator = MeshCoreCoordinator(hass, entry, client)
     await async_attach_history(hass, entry, client)
+    await async_attach_remote(hass, entry, coordinator)
     try:
         if hasattr(client, "history"):
             coordinator.data = {"nodes": [], "range": client.range.snapshot(), "health": {"radio_ok": False}}

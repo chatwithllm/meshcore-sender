@@ -91,3 +91,25 @@ class InboxTransportTests(TransportTests):
         await client.send_one("dm:OptimusPrime", "Test")
         self.assertEqual(client.history.snapshot()["messages"][0]["status"], "unconfirmed")
         await client.close()
+
+    async def test_remote_receives_only_unique_direct_identity_and_fresh_history(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        client.history = module.MessageHistory()
+        client.remote = SimpleNamespace(submit=Mock(), close=AsyncMock(), snapshot=Mock(return_value={}))
+        client.remote_store = SimpleNamespace(async_save=AsyncMock())
+        key = "abcd" * 16
+        contact = {"adv_name": "OptimusPrime", "public_key": key}
+        self.radio.contacts = {key: contact}
+        self.radio.get_contact_by_key_prefix.return_value = contact
+        await client._ensure_connected()
+        message = {"text": "Status", "pubkey_prefix": key[:12], "sender_timestamp": 100}
+        client._receive(SimpleNamespace(payload=message))
+        self.assertEqual(client.remote.submit.call_args.args[:4], (key, "OptimusPrime", "Status", 100))
+        client._receive(SimpleNamespace(payload=message))
+        self.assertEqual(client.remote.submit.call_count, 1)
+        client._receive(SimpleNamespace(payload={**message, "channel_idx": 1, "sender_timestamp": 101}))
+        self.assertEqual(client.remote.submit.call_count, 1)
+        self.radio.contacts["other"] = {"adv_name": "Spoof", "public_key": key[:12] + "0" * 52}
+        client._receive(SimpleNamespace(payload={**message, "sender_timestamp": 102}))
+        self.assertEqual(client.remote.submit.call_count, 1)
+        await client.close()

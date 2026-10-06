@@ -15,7 +15,8 @@ handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef)
 
 class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        namespace = {"DOMAIN": "meshcore_sender", "find_pin_bridge": lambda *args: None}
+        namespace = {"DOMAIN": "meshcore_sender", "find_pin_bridge": lambda *args: None,
+                     "list_agents": lambda hass: [], "agent_safe": lambda hass, agent: False}
         node = copy.deepcopy(handler)
         node.decorator_list = []
         exec(compile(ast.Module(body=[node], type_ignores=[]), "workspace_handler", "exec"), namespace)
@@ -75,6 +76,14 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         result = self.connection.send_result.call_args.args[1]
         self.assertEqual(result["messages"][0]["target"], "dm:OptimusPrime")
         self.assertEqual(saved["messages"][0]["name"], "Unknown")
+
+    async def test_ai_control_enabled_selection_is_rejected_before_settings_change(self):
+        self.client.remote = SimpleNamespace(configure=Mock(), snapshot=Mock(return_value={}))
+        self.client.remote.data = {"controllers": []}
+        await self.call("remote_settings", controllers=[], enabled=False, agent_id="conversation.unsafe")
+        self.client.remote.configure.assert_not_called()
+        self.connection.send_error.assert_called_once()
+        self.coordinator.action.assert_not_awaited()
 
     async def test_pin_handler_is_admin_only_and_hides_transport_errors(self):
         pin_handler=next(n for n in source.body if isinstance(n,ast.AsyncFunctionDef)

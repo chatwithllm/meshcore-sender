@@ -1,6 +1,25 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
+- Native remote commands now live in `remote_commands.py`, with HA credential
+  reuse and tool-free agent eligibility in `ai_agent.py`. `workspace.py` attaches
+  a per-entry remote Store before the radio starts fetching messages. Defaults
+  are disabled; favorites are candidates, not automatic authorization. Contact
+  permissions bind full public keys; ambiguous wire prefixes/channel senders
+  cannot trigger commands. Names may still change between sessions.
+- Commands tab: favorites/controller selection, enabled state, AI selector,
+  persistent command outcomes, and AI preview without radio transmission.
+  Standard commands use local parsing; AI fallback returns validated proposals.
+  Status is read-only; range start/stop require `1`/`confirm` within 120 seconds.
+  Cancel clears only the pending request. Pending requests expire across restart;
+  enable/controllers/agent/history persist. Incoming source timestamps must be
+  within 120 seconds; duplicate/future/stale messages are not acted upon.
+- Existing HA Google and Codex agents have home-control permissions; do not send
+  incoming radio text to them. A separate Codex conversation subentry named
+  `MeshCore AI` was created through the HA config flow using the existing login,
+  no tools, default gpt-5.1-codex model and low reasoning. Other agents unchanged.
+- 0.6.0 deployment and AI-preview verification are pending until recorded below.
+  Fresh pre-update HA backup: `f8aaf3f1`. Never restart during an active range test.
 - Rollout correction: user's existing Safari session did not show Sort after
   the file-only update. Once the range test was confirmed stopped, the pending
   HA restart was completed (backup `45a61ce6`). The registered module URL is
@@ -59,7 +78,7 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
   close survives polling, and mobile stacks map/list. Never infer node locations.
 - Read `homeassistant.md` first for the native HA migration. Current development
   is in `custom_components/meshcore_sender/`, not the Mac wrapper.
-- `/meshcore` sidebar panel: Inbox, Compose, Range, Contacts/favorites and Map. The
+- `/meshcore` sidebar panel: Inbox, Compose, Range, Contacts/favorites, Commands and Map. The
   frontend module is `www/workspace.js`; authenticated admin-only WebSocket API
   and Store lifecycle are in `workspace.py`; bounded history in `history.py`.
 - Reuses `NativeMeshCoreClient` and its single radio connection. No new server,
@@ -74,8 +93,8 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
   Codex HA header helper for authorized API access; do not hardcode tokens.
 - New native inbox starts with this version: old HA events and Mac history are
   not automatically imported. Range tests stop at restart; defaults persist.
-- Remote-command controller management, AI, contact import/export and
-  discovery scans are still pending migration. Do not claim complete Mac parity.
+- Channel-based controllers, contact import/export and discovery scans are still
+  pending migration. Do not claim complete Mac parity or live remote-command tests.
 - Tests: Python unittest suite plus `tests/workspace_browser.cjs` (Playwright).
   Browser actions use fixtures and must not secretly send live radio messages.
 - Deployment completed: HACS installed `49121ff` / 0.5.0 after verified HA
