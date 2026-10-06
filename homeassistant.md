@@ -1,5 +1,26 @@
 # Home Assistant
 
+## Map State Filter (0.5.1)
+
+The Map sidebar has a **State** dropdown above repeater search. It lists states
+represented by GPS repeaters, with counts, and defaults to **All states**.
+State and name search filter both markers and list rows; changing either fits
+the matching locations. Hidden selections/popups are cleared, and the selected
+state survives background refreshes and switching workspace tabs. Counts in the
+dropdown reflect all GPS repeaters, independently of the name search.
+
+Locations are classified locally with bundled U.S. Census 2024 cartographic
+state boundaries and Turf booleanPointInPolygon. No external geocoding call or
+repeater-name guessing is used. Outside-US and unmatched coordinates appear
+under **Outside US / unclassified**. Generalized borders and advertised GPS can
+be approximate, especially near coasts/state lines; this is not survey data.
+See `www/vendor/STATE-DATA.md` for provenance, reproduction and library licenses.
+
+Verification includes `node tests/map_states.cjs` (known locations, non-US
+locations, multi-part island states and polygon holes) and four-width browser
+fixtures (filter synchronization, search intersections, empty results, polling,
+tab re-entry, selection clearing and phone layout).
+
 ## Runtime PIN And Repeater Map (0.5.0)
 
 The sidebar now includes **Map**, showing native-radio repeaters with valid

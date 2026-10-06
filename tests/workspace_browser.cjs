@@ -8,7 +8,7 @@ const path = require('node:path');
   const errors = [];
   for (const width of [375, 390, 768, 1366]) {
     const page = await browser.newPage({viewport:{width,height:844}});
-    page.on('pageerror', err => errors.push(err.message));
+    page.on('pageerror', err => errors.push(err.stack));
     await page.route('http://meshcore.test/',route=>route.fulfill({contentType:'text/html',body:`<style>body{margin:0;--primary-background-color:#101418;--card-background-color:#1c2228;--secondary-background-color:#283039;--primary-text-color:#eef2f5;--secondary-text-color:#a7b1ba;--primary-color:#369cec;--text-primary-color:#fff;--divider-color:#374049}</style><meshcore-workspace></meshcore-workspace>`}));
     await page.route('**/meshcore_sender_static/vendor/*',route=>route.fulfill({path:path.resolve(__dirname,'../custom_components/meshcore_sender/www/vendor',route.request().url().split('/').pop())}));
     await page.goto('http://meshcore.test/');
@@ -21,7 +21,8 @@ const path = require('node:path');
         nodes:[{id:'dm:OptimusPrime',name:'OptimusPrime',kind:'node'}, {id:'chan:1',name:'Family Mesh',kind:'private'},
           {id:'dm:Long',name:'A rather long contact name for mobile overflow checks',kind:'repeater'},
           {id:'dm:Bethpage Solar',name:'Bethpage Solar',kind:'repeater',lat:36.38932,lon:-86.262},
-          {id:'dm:BlairOneW',name:'BlairOneW',kind:'repeater',lat:39.70739,lon:-85.99339}],
+          {id:'dm:BlairOneW',name:'BlairOneW',kind:'repeater',lat:39.70739,lon:-85.99339},
+          {id:'dm:Toronto',name:'Toronto',kind:'repeater',lat:43.6532,lon:-79.3832}],
         messages:[{id:'one',conversation:'pk:abc',target:'dm:OptimusPrime',name:'OptimusPrime',sender:'OptimusPrime',text:'<img src=x onerror="window.hacked=true"> Hello',received_at:now,direction:'in',status:'received'},
           {id:'two',conversation:'chan:1',target:'chan:1',name:'Family Mesh',sender:'You',text:'Radio check',received_at:now-100,direction:'out',status:'broadcast'}],
         range:{server_now:now,running:false,targets:[],sent:0,acked:0,interval:30,log:[],per_target:{}}};
@@ -85,11 +86,37 @@ const path = require('node:path');
     await page.waitForTimeout(2200);
     assert.equal(await page.locator('.leaflet-popup').count(),0,'Closing a popup must survive polling');
     assert.equal(await page.locator('[data-map-node="dm:Bethpage Solar"]').getAttribute('aria-pressed'),'true');
-    await page.getByRole('button',{name:'Fit all repeaters',exact:true}).click();
+    await page.getByRole('button',{name:'Fit matching repeaters',exact:true}).click();
     await page.waitForTimeout(650);
     await page.locator('.leaflet-interactive').nth(1).click();
     await page.waitForTimeout(650);
     assert.equal(await page.locator('[data-map-node="dm:BlairOneW"]').getAttribute('aria-pressed'),'true');
+    await page.locator('#map-state').selectOption('TN');
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('[data-map-node]').count(),1);
+    assert.equal(await page.locator('.leaflet-interactive').count(),1);
+    assert.equal(await page.locator('[data-map-node="dm:Bethpage Solar"]').count(),1);
+    assert.equal(await page.locator('.leaflet-popup').count(),0,'Hidden selected node must close its popup');
+    assert.equal(await page.locator('[data-map-node][aria-pressed="true"]').count(),0);
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('#map-state').inputValue(),'TN','State survives polling');
+    await page.locator('#map-search').fill('no match');
+    assert.equal(await page.locator('.leaflet-interactive').count(),0);
+    assert.ok((await page.locator('#map-selection').textContent()).includes('0 of 3'));
+    await page.locator('#map-search').fill('');
+    await page.locator('#map-state').selectOption('IN');
+    assert.equal(await page.locator('[data-map-node="dm:BlairOneW"]').count(),1);
+    await page.locator('#map-state').selectOption('unclassified');
+    assert.equal(await page.locator('[data-map-node="dm:Toronto"]').count(),1);
+    await page.locator('#map-state').selectOption('');
+    assert.equal(await page.locator('.leaflet-interactive').count(),3);
+    await page.getByRole('button',{name:'Contacts',exact:true}).click();
+    await page.getByRole('button',{name:'Map',exact:true}).click();
+    await page.locator('[data-map-node="dm:BlairOneW"]').waitFor();
+    await page.locator('#map-state').selectOption('IN');
+    await page.waitForTimeout(650);
+    const mapOverflow=await page.evaluate(()=>[...document.querySelector('meshcore-workspace').shadowRoot.querySelectorAll('#map-state,#map-search,#map-canvas,.map-row')].filter(el=>{const r=el.getBoundingClientRect();return r.right>innerWidth+1||r.left<0}).length);
+    assert.equal(mapOverflow,0);
     await page.screenshot({path:`/tmp/meshcore-workspace-map-${width}.png`,fullPage:true});
     assert.ok(await page.locator('.leaflet-tile').evaluateAll(images=>images.some(i=>i.complete&&i.naturalWidth>0)),'OSM tiles must render');
     await page.close();

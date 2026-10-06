@@ -1,6 +1,12 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.0)
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.1)
+- Version 0.5.1 adds a GPS-derived State dropdown to Map. Both markers/list and
+  name search share the filter; excluded selections are cleared and matching
+  locations fit automatically. Local Census 2024 boundaries and bundled Turf
+  classify coordinates; no geocoder or guessed states. Non-US/unmatched points
+  stay available under Outside US / unclassified. Boundary provenance/licenses
+  are in `www/vendor/STATE-DATA.md`; geography tests in `tests/map_states.cjs`.
 - Version 0.5.0 adds runtime bridge PIN updates and a native repeater map. Read
   the first section of `homeassistant.md` and `bridge.py`. PIN updates use a
   separate admin-only WebSocket command with the redacted `password` field,

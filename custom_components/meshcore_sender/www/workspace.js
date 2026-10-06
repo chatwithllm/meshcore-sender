@@ -3,6 +3,24 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const icon = name => `<ha-icon icon="mdi:${name}"></ha-icon>`;
 const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 let leafletReady;
+let stateBoundariesReady;
+function loadStateBoundaries() {
+  if (!stateBoundariesReady) stateBoundariesReady = Promise.all([
+    fetch('/meshcore_sender_static/vendor/us-states.json').then(response=>{
+      if(!response.ok) throw new Error('State boundaries unavailable');
+      return response.json();
+    }),
+    new Promise((resolve,reject)=>{
+      if(window.MeshCoreGeo) {resolve();return;}
+      const script=document.createElement('script');
+      script.src='/meshcore_sender_static/vendor/point-in-polygon.js';
+      script.onload=resolve;
+      script.onerror=()=>{script.remove();reject(new Error('State lookup unavailable'));};
+      document.head.append(script);
+    })
+  ]).then(([data])=>data.features).catch(error=>{stateBoundariesReady=null;throw error;});
+  return stateBoundariesReady;
+}
 function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
   if (!leafletReady) leafletReady = new Promise((resolve,reject) => {
@@ -32,6 +50,8 @@ class MeshCoreWorkspace extends HTMLElement {
     this.data = null;
     this.entryId = null;
     this.mapQuery = '';
+    this.mapState = '';
+    this.mapStateCache = new Map();
     this.mapSelected = null;
     this.mapMarkers = new Map();
   }
@@ -133,41 +153,90 @@ class MeshCoreWorkspace extends HTMLElement {
   contacts() {
     return `<section class="tool"><h2>Contacts & channels</h2>${this.picker()}<p class="muted">${this.data?.nodes.length || 0} available · ${this.data?.favorites.length || 0} favorites</p></section>`;
   }
-  mapNodes() {
+  gpsMapNodes() {
     return (this.data?.nodes||[]).filter(n=>n.kind==='repeater' && Number.isFinite(n.lat) && Number.isFinite(n.lon)
       && Math.abs(n.lat)<=90 && Math.abs(n.lon)<=180 && (n.lat!==0 || n.lon!==0));
   }
+  nodeState(node) {
+    if(!this.stateBoundaries) return null;
+    const key=`${node.lat},${node.lon}`;
+    if(!this.mapStateCache.has(key)) {
+      const state=this.stateBoundaries.find(feature=>window.MeshCoreGeo.booleanPointInPolygon([node.lon,node.lat],feature));
+      this.mapStateCache.set(key,state?.properties||{code:'unclassified',name:'Outside US / unclassified'});
+    }
+    return this.mapStateCache.get(key);
+  }
+  mapNodes() {
+    return this.gpsMapNodes().filter(node=>(!this.mapState||this.nodeState(node)?.code===this.mapState)
+      && node.name.toLowerCase().includes(this.mapQuery.trim().toLowerCase()));
+  }
+  renderMapStates() {
+    const select=this.shadowRoot.getElementById('map-state');if(!select)return;
+    if(!this.stateBoundaries) {
+      select.disabled=true;
+      select.innerHTML=`<option>${this.stateLookupFailed?'State filter unavailable':'Loading states…'}</option>`;
+      return;
+    }
+    const counts=new Map();
+    for(const node of this.gpsMapNodes()) {
+      const state=this.nodeState(node);
+      const item=counts.get(state.code)||{...state,count:0};item.count++;counts.set(state.code,item);
+    }
+    if(this.mapState&&!counts.has(this.mapState)) {
+      const state=this.stateBoundaries.find(feature=>feature.properties.code===this.mapState)?.properties;
+      counts.set(this.mapState,{code:this.mapState,name:state?.name||'Outside US / unclassified',count:0});
+    }
+    const signature=JSON.stringify([...counts.values()]);
+    if(signature!==this.mapStateOptionsSignature||select.disabled) {
+      select.innerHTML=`<option value="">All states (${this.gpsMapNodes().length})</option>`+
+        [...counts.values()].sort((a,b)=>a.name.localeCompare(b.name)).map(state=>`<option value="${escapeHTML(state.code)}">${escapeHTML(state.name)} (${state.count})</option>`).join('');
+      this.mapStateOptionsSignature=signature;
+    }
+    select.disabled=false;select.value=this.mapState;
+  }
   mapView() {
-    return `<link rel="stylesheet" href="/meshcore_sender_static/vendor/leaflet.css"><section class="tool"><div class="section-title"><h2>Repeater map</h2><button class="icon" id="map-fit" title="Fit all repeaters" aria-label="Fit all repeaters">${icon('fit-to-screen-outline')}</button></div><div class="map-layout"><div><div id="map-canvas" aria-label="Repeater map"></div><div class="map-selection" id="map-selection">${this.mapNodes().length} repeaters with advertised GPS</div></div><aside class="map-sidebar"><input type="search" id="map-search" placeholder="Search repeaters" aria-label="Search repeaters" value="${escapeHTML(this.mapQuery)}"><div class="map-list" id="map-list"></div></aside></div><p class="muted map-note">Only repeaters with advertised GPS are shown. Coordinates may be outdated; map tiles require internet access.</p></section>`;
+    return `<link rel="stylesheet" href="/meshcore_sender_static/vendor/leaflet.css"><section class="tool"><div class="section-title"><h2>Repeater map</h2><button class="icon" id="map-fit" title="Fit matching repeaters" aria-label="Fit matching repeaters">${icon('fit-to-screen-outline')}</button></div><div class="map-layout"><div><div id="map-canvas" aria-label="Repeater map"></div><div class="map-selection" id="map-selection" role="status">${this.mapNodes().length} repeaters with advertised GPS</div></div><aside class="map-sidebar"><label for="map-state" class="field-label">State</label><select id="map-state" aria-label="Filter by state" disabled><option>Loading states…</option></select><input type="search" id="map-search" placeholder="Search repeaters" aria-label="Search repeaters" value="${escapeHTML(this.mapQuery)}"><div class="map-list" id="map-list"></div></aside></div><p class="muted map-note">Only advertised GPS is shown. State boundaries are approximate; map tiles require internet access.</p></section>`;
   }
   async initMap() {
     const container=this.shadowRoot.getElementById('map-canvas');
     if(!container) return;
     try {
+      const stylesheet=this.shadowRoot.querySelector('link[rel="stylesheet"]');
+      if(stylesheet&&!stylesheet.sheet) await new Promise((resolve,reject)=>{
+        stylesheet.addEventListener('load',resolve,{once:true});
+        stylesheet.addEventListener('error',()=>reject(new Error('Map styles could not load')),{once:true});
+      });
       const L=await loadLeaflet();
+      try {this.stateBoundaries=await loadStateBoundaries();this.stateLookupFailed=false;}
+      catch {this.stateLookupFailed=true;this.mapState='';}
       if(!container.isConnected || this.view!=='map') return;
-      this.leafletMap=L.map(container,{zoomControl:true,scrollWheelZoom:true}).setView([39,-98],4);
+      this.leafletMap=L.map(container,{zoomControl:true,scrollWheelZoom:true,zoomAnimation:false}).setView([39,-98],4);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
         maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
       }).addTo(this.leafletMap);
       this.mapResize=new ResizeObserver(()=>this.leafletMap?.invalidateSize());
       this.mapResize.observe(container);
-      this.mapSignature=null;this.updateMap();this.fitMap();
+      this.mapSignature=null;this.mapStateOptionsSignature=null;this.updateMap();this.fitMap();
       if(this.mapSelected) this.selectMapNode(this.mapSelected,false);
     } catch(err) { container.textContent=err.message; }
   }
   disposeMap() {
     this.mapResize?.disconnect();
+    this.leafletMap?.stop();
     this.leafletMap?.remove();this.leafletMap=null;this.mapMarkers.clear();
   }
   fitMap() {
     const nodes=this.mapNodes();
-    if(nodes.length && this.leafletMap) this.leafletMap.fitBounds(nodes.map(n=>[n.lat,n.lon]),{padding:[30,30],maxZoom:8});
+    if(nodes.length && this.leafletMap) this.leafletMap.fitBounds(nodes.map(n=>[n.lat,n.lon]),{padding:[30,30],maxZoom:8,animate:false});
   }
   updateMap() {
     if(!this.leafletMap) return;
+    this.renderMapStates();
     const nodes=this.mapNodes(),signature=JSON.stringify(nodes);
     if(signature===this.mapSignature) return;
+    if(this.mapSelected&&!nodes.some(node=>node.id===this.mapSelected)) {
+      this.mapSelected=null;this.mapPopupOpen=false;
+    }
     if(signature!==this.mapSignature) {
       const keepOpen=this.mapPopupOpen;
       for(const marker of this.mapMarkers.values()) marker.remove();
@@ -193,14 +262,14 @@ class MeshCoreWorkspace extends HTMLElement {
   }
   renderMapList() {
     const list=this.shadowRoot.getElementById('map-list');if(!list)return;
-    const nodes=this.mapNodes().filter(n=>n.name.toLowerCase().includes(this.mapQuery.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name));
-    list.innerHTML=nodes.map(n=>`<button data-map-node="${escapeHTML(n.id)}" class="map-row ${this.mapSelected===n.id?'selected':''}" aria-pressed="${this.mapSelected===n.id}"><strong>${escapeHTML(n.name)}</strong><small>${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}</small></button>`).join('') || '<p class="empty-small">No repeaters with matching GPS</p>';
+    const nodes=this.mapNodes().sort((a,b)=>a.name.localeCompare(b.name));
+    list.innerHTML=nodes.map(n=>`<button data-map-node="${escapeHTML(n.id)}" class="map-row ${this.mapSelected===n.id?'selected':''}" aria-pressed="${this.mapSelected===n.id}"><strong>${escapeHTML(n.name)}</strong><small>${escapeHTML(this.nodeState(n)?.name||'')} · ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}</small></button>`).join('') || '<p class="empty-small">No repeaters match these filters</p>';
     list.querySelectorAll('[data-map-node]').forEach(el=>el.onclick=()=>this.selectMapNode(el.dataset.mapNode));
   }
   updateMapSelection() {
     const selected=this.mapNodes().find(n=>n.id===this.mapSelected);
     const caption=this.shadowRoot.getElementById('map-selection');
-    if(caption) caption.textContent=selected?`${selected.name} · ${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`:`${this.mapNodes().length} repeaters with advertised GPS`;
+    if(caption) caption.textContent=selected?`${selected.name} · ${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`:`${this.mapNodes().length} of ${this.gpsMapNodes().length} repeaters shown`;
     for(const [id,marker] of this.mapMarkers) marker.setStyle({fillColor:id===this.mapSelected?'#159ee8':'#269b68',radius:id===this.mapSelected?10:7});
   }
   selectMapNode(id,open=true) {
@@ -259,7 +328,8 @@ class MeshCoreWorkspace extends HTMLElement {
     on('refresh','onclick',()=>this.refresh());
     on('radio-settings','onclick',()=>this.openPinDialog());
     on('map-fit','onclick',()=>this.fitMap());
-    on('map-search','oninput',e=>{this.mapQuery=e.target.value;this.renderMapList();});
+    on('map-search','oninput',e=>{this.mapQuery=e.target.value;this.updateMap();this.fitMap();});
+    on('map-state','onchange',e=>{this.mapState=e.target.value;this.updateMap();this.fitMap();});
     on('radio','onchange',e=>{this.entryId=e.target.value;this.selected=null;this.targets.clear();this.signature=null;this.refresh();});
     on('back','onclick',()=>{this.selected=null;this.render();});
     for(const id of ['new-message','compose-empty']) on(id,'onclick',()=>{this.view='compose';this.render();});
@@ -324,6 +394,7 @@ class MeshCoreWorkspace extends HTMLElement {
     progress.value=r.running? r.next_due_at?Math.max(0,Math.min(1,1-seconds/r.interval)):1:0;
   }
   static styles = `
+    .map-sidebar>select{width:100%;margin-bottom:10px}.map-sidebar .field-label{font-size:12px;margin-bottom:6px}.map-sidebar .map-list{height:394px}@media(max-width:700px){.map-sidebar>select{font-size:16px}.map-sidebar .map-list{height:240px}}
     .map-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;margin-top:16px}.map-sidebar{min-width:0}.map-sidebar>input{width:100%;margin-bottom:10px}.map-list{height:470px;overflow:auto;position:relative}.map-row{display:block;text-align:left;width:100%;border:0;border-bottom:1px solid var(--divider-color);border-radius:0;padding:12px}.map-row strong{display:block;overflow-wrap:anywhere}.map-row small{display:block;color:var(--secondary-text-color);margin-top:6px}.map-row.selected{background:var(--secondary-background-color);box-shadow:inset 3px 0 var(--primary-color)}#map-canvas{height:520px;width:100%;border-radius:6px;z-index:0;background:#dce4dc}.map-selection{padding:12px 0;color:var(--secondary-text-color);font-size:12px;overflow-wrap:anywhere}.map-note{font-size:12px}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card-background-color,#fff);color:var(--primary-text-color,#222)}.leaflet-popup-content p{margin:8px 0}.leaflet-popup-content a{color:var(--primary-color,#0288d1)}.leaflet-container{font:13px Arial,sans-serif}.leaflet-popup-close-button{min-height:24px!important;padding:0!important}.repeater-popup strong{display:block;overflow-wrap:anywhere}dialog{max-width:420px;width:calc(100% - 32px);padding:24px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color)}dialog::backdrop{background:rgba(0,0,0,.45)}dialog p{color:var(--secondary-text-color)}dialog label{display:block;margin-bottom:8px}dialog input{width:100%;font-size:18px}dialog .actions{justify-content:flex-end}nav .range-indicator{width:6px;height:6px}
     :host { display:block;height:100%;color:var(--primary-text-color,#202124);background:var(--primary-background-color,#f5f6f8);font:14px var(--paper-font-body1_-_font-family,Roboto,Arial,sans-serif);letter-spacing:0; }
     .shell{background:var(--primary-background-color,#f5f6f8);min-height:100%}
