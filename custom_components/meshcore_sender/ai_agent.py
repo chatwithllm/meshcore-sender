@@ -31,10 +31,14 @@ def agent_safe(hass, entity_id):
 
 
 def list_agents(hass):
-    return [{"id": state.entity_id, "name": state.name,
-             "safe": agent_safe(hass, state.entity_id)}
-            for state in hass.states.async_all("conversation")
-            if state.entity_id != "conversation.home_assistant"]
+    agents = []
+    for state in hass.states.async_all("conversation"):
+        if state.entity_id == "conversation.home_assistant":
+            continue
+        agent = conversation.async_get_agent(hass, state.entity_id)
+        agents.append({"id": state.entity_id, "name": getattr(agent, "name", None) or state.name,
+                       "safe": agent_safe(hass, state.entity_id)})
+    return agents
 
 
 async def interpret(hass, agent_id, text, nodes):
