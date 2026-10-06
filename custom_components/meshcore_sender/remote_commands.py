@@ -113,7 +113,7 @@ class RemoteCommands:
         if not 5 <= interval <= 300:
             raise ValueError("Interval must be 5-300 seconds")
         if not target_text:
-            return {"action": "clarify", "interval": interval}
+            return {"action": "clarify", "interval": interval, "default_sender": True}
         pieces = re.split(r"\s+and\s+|\s*,\s*", target_text)
         targets = []
         for piece in pieces:
@@ -132,6 +132,9 @@ class RemoteCommands:
 
     async def offer(self, key, name, proposal):
         if proposal["action"] == "clarify":
+            if not proposal.get("default_sender"):
+                await self.reply(key, name, "Specify targets: range test NAME every 30s. Multiple: NAME1 and NAME2. Cancel to exit.")
+                return
             choices = [{"action": "start", "targets": [n["id"]],
                         "interval": proposal.get("interval", 30), "prefix": "ping"}
                        for n in self.nodes() if n["name"].casefold() == name.casefold()][:1]
@@ -161,11 +164,12 @@ class RemoteCommands:
         if not self.allowed(key):
             return
         now = time.monotonic()
-        if now - self.recent.get(key, -100) < 2:
+        value = text.strip().lower()
+        responding = key in self.pending and value in ("1", "confirm", "cancel", "cancel command")
+        if now - self.recent.get(key, -100) < 2 and not responding:
             self.record(name, "Rate limited")
             return
         self.recent[key] = now
-        value = text.strip().lower()
         if value in ("cancel", "cancel command"):
             self.pending.pop(key, None)
             await self.reply(key, name, "Command cancelled. A running test is unchanged; send stop range test to stop it.")

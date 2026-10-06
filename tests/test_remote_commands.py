@@ -149,3 +149,14 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             await self.handle("stop")
         self.assertFalse(self.engine.pending)
+
+    async def test_immediate_confirmation_is_not_rate_limited(self):
+        await self.engine.handle(self.key, "OptimusPrime", "stop")
+        await self.engine.handle(self.key, "OptimusPrime", "1")
+        self.execute.assert_awaited_once_with({"action": "stop"}, "OptimusPrime")
+
+    async def test_ai_clarification_does_not_assume_range_test(self):
+        self.ai.return_value = {"action": "clarify"}
+        await self.handle("Hello")
+        self.assertFalse(self.engine.pending)
+        self.execute.assert_not_awaited()
