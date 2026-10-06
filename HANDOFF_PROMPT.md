@@ -1,6 +1,13 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- 0.6.3 battery monitoring is prepared, deployment authorized: one-minute local
+  `get_bat()` ADC reads over HA's existing radio transport, voltage measurement
+  sensor/history and workspace status. Check PROJECT_STATUS.md for verified
+  deployment checkpoint; 0.6.2 was previously installed. User stopped the test.
+  Solar charger charges two parallel 18650 cells that directly power the battery
+  connector (not USB). Live voltage/history verification remains pending.
+  No percentage/current/capacity/runtime estimates, no second radio owner.
 - 0.6.2 is deployed (`24937b9`): final range-stop summaries
   with start/stop actor+HA/LoRa source, attempts, direct ACKs and channel TX
   (explicitly no channel delivery ACK). Notify tested targets; LoRa stopper's

@@ -22,6 +22,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
             connect=AsyncMock(return_value=SimpleNamespace(type="connected")),
             ensure_contacts=AsyncMock(),
             commands=SimpleNamespace(get_contacts=AsyncMock(return_value=SimpleNamespace(type="contacts")),
+                                     get_bat=AsyncMock(return_value=SimpleNamespace(type="battery", payload={"level": 3987})),
                                      get_channel=AsyncMock(return_value=SimpleNamespace(
                 type="channel", payload={"channel_name": "Actual channel"}))),
             subscribe=Mock(), start_auto_message_fetching=AsyncMock(),
@@ -36,7 +37,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                      "TCPConnection": self.tcp, "ProxyBLEConnection": self.ble,
                      "MeshCore": self.sdk,
                      "EventType": SimpleNamespace(ERROR="error", CONTACT_MSG_RECV="dm",
-                                                  CHANNEL_MSG_RECV="channel")}
+                                                  CHANNEL_MSG_RECV="channel", BATTERY="battery")}
         # Load the production client class without importing Home Assistant.
         source = ast.parse((ROOT / "bluetooth_client.py").read_text())
         node = next(n for n in source.body if isinstance(n, ast.ClassDef)
@@ -88,6 +89,48 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.ble.assert_called_once_with(self.hass, "AA:BB:CC:DD:EE:FF")
         self.tcp.assert_not_called()
         await client.close()
+
+    async def test_battery_is_local_millivolts_and_cached(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        first = await client.request("GET", "/api/health")
+        second = await client.request("GET", "/api/health")
+        self.assertEqual(first["battery"]["voltage"], 3.987)
+        self.assertTrue(first["battery"]["available"])
+        self.assertEqual(first["battery"], second["battery"])
+        self.radio.commands.get_bat.assert_awaited_once()
+        self.assertEqual(client.range.state["sent"], 0)
+
+    async def test_battery_failure_does_not_hide_other_health(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        await client.request("GET", "/api/health")
+        client._battery_checked_at = time.monotonic() - 61
+        self.radio.commands.get_bat.side_effect = TimeoutError()
+        health = await client.request("GET", "/api/health")
+        self.assertTrue(health["radio_ok"])
+        self.assertFalse(health["battery"]["available"])
+        self.assertEqual(health["battery"]["voltage"], 3.987)
+        await client.request("GET", "/api/health")
+        self.assertEqual(self.radio.commands.get_bat.await_count, 2)
+
+    async def test_invalid_voltage_and_wrong_events_are_unavailable(self):
+        for level in (0, -1, float('nan'), float('inf'), 65536, True, "3987", None):
+            client = self.Client(self.hass, "bridge", host="bridge")
+            self.radio.commands.get_bat.return_value = SimpleNamespace(type="battery", payload={"level": level})
+            result = await client.request("GET", "/api/health")
+            self.assertFalse(result["battery"]["available"])
+        self.radio.commands.get_bat.return_value = SimpleNamespace(type="error", payload={"level": 3987})
+        client = self.Client(self.hass, "bridge", host="bridge")
+        self.assertFalse((await client.request("GET", "/api/health"))["battery"]["available"])
+
+    async def test_cached_battery_expires_and_cancellation_is_not_swallowed(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        await client.request("GET", "/api/health")
+        client.battery["sampled_at"] = time.time() - 181
+        self.assertFalse((await client._battery_status())["available"])
+        client._battery_checked_at = None
+        self.radio.commands.get_bat.side_effect = asyncio.CancelledError()
+        with self.assertRaises(asyncio.CancelledError):
+            await client.request("GET", "/api/health")
 
     async def test_failed_bridge_handshake_cleans_up(self):
         self.radio.connect.side_effect = ConnectionError("Connection refused")

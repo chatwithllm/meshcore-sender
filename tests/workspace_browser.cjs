@@ -17,7 +17,7 @@ const path = require('node:path');
       window.calls = [];
       const now = Date.now()/1000;
       const state = {entry_id:'fixture', entries:[{id:'fixture',name:'Radio'}],available:true,
-        health:{radio_ok:true},history_supported:true,pin_update_supported:true, favorites:[], settings:{interval:30,target:'dm:OptimusPrime'},
+        health:{radio_ok:true,battery:{available:true,voltage:3.987,sampled_at:now}},battery_entity_id:'sensor.radio_battery_voltage',history_supported:true,pin_update_supported:true, favorites:[], settings:{interval:30,target:'dm:OptimusPrime'},
         nodes:[{id:'dm:OptimusPrime',name:'OptimusPrime',kind:'node',public_key:'a'.repeat(64)}, {id:'chan:1',name:'Family Mesh',kind:'private'},
           {id:'dm:Long',name:'A rather long contact name for mobile overflow checks',kind:'repeater'},
           {id:'dm:Bethpage Solar',name:'Bethpage Solar',kind:'repeater',lat:36.38932,lon:-86.262},
@@ -42,6 +42,19 @@ const path = require('node:path');
           controllers:msg.controllers.map(key=>({key,name:'OptimusPrime'})),agent_id:msg.agent_id};
         return structuredClone(state);
       }};
+    });
+    await page.locator('#battery-status').getByText('3.987 V').waitFor();
+    await page.evaluate(()=>document.querySelector('meshcore-workspace').addEventListener('hass-more-info',e=>window.moreInfo=e.detail));
+    await page.getByRole('button',{name:'View battery voltage history',exact:true}).click();
+    assert.equal(await page.evaluate(()=>window.moreInfo.entityId),'sensor.radio_battery_voltage');
+    await page.evaluate(()=>{
+      const panel=document.querySelector('meshcore-workspace');
+      panel.data.health.battery.sampled_at=Date.now()/1000-181;panel.updateStatus();
+    });
+    assert.ok((await page.locator('#battery-status').textContent()).includes('unavailable'));
+    await page.evaluate(()=>{
+      const panel=document.querySelector('meshcore-workspace');
+      panel.data.health.battery.sampled_at=Date.now()/1000;panel.updateStatus();
     });
     await page.getByRole('button',{name:/OptimusPrime/}).first().click();
     await assert.equal(await page.locator('meshcore-workspace .bubble img').count(),0);

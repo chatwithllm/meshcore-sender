@@ -5,6 +5,18 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
 
+- Prepared and being deployed: 0.6.3 battery-voltage monitoring. Native
+  bridge/BLE reads `get_bat()` / BATTERY `level` (millivolts) once per minute under
+  the existing transport lock; five-second timeout, invalid/stale handling, HA
+  measurement sensor and workspace voltage/history control. No percent/current/
+  runtime estimates. User confirmed two 18650 cells in parallel, directly powering
+  the Heltec battery connection and charged by a solar charger (not USB). Test
+  stopped and user authorized deployment. Live ADC verification and HA deployment
+  remain pending until a subsequent verified checkpoint. Do not open a second
+  radio connection. 0.6.2 below remains live until deployment completes.
+  Validation: 114 Python tests passed, workspace browser fixtures passed at
+  375/390/768/1366 px (voltage, stale state and history event included), geography
+  tests passed and `git diff --check` passed.
 - Active product: native Home Assistant integration and `/meshcore` sidebar.
 - HA integration version: **0.6.2**, HACS-installed code revision **`24937b9`**.
   The later bridge transport fix below changes ESPHome firmware, not HA code;

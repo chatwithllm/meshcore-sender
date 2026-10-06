@@ -7,6 +7,7 @@ import voluptuous as vol
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .history import MessageHistory
@@ -165,6 +166,8 @@ async def websocket_workspace(hass, connection, msg):
             "entries": [{"id": k, "name": v.entry.title} for k, v in entries.items()],
             "nodes": data.get("nodes", []), "health": data.get("health", {}),
             "available": chosen.last_update_success,
+            "battery_entity_id": er.async_get(hass).async_get_entity_id(
+                "sensor", DOMAIN, f"{chosen.entry.entry_id}_battery_voltage"),
             "pin_update_supported": bool(find_pin_bridge(hass, chosen)),
             "settings": {"target": chosen.setting("target"), "interval": chosen.setting("interval", 30),
                          "targets": chosen.setting("workspace_targets"),
@@ -215,7 +218,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.6.2",
+            module_url="/meshcore_sender_static/workspace.js?v=0.6.3",
             require_admin=True,
         )
         state["panel"] = True

@@ -59,6 +59,8 @@ class NativeMeshCoreClient:
         self.channels = []
         self.lock = asyncio.Lock()
         self.last_message = None
+        self.battery = {"voltage": None, "sampled_at": None, "available": False}
+        self._battery_checked_at = None
         self.range = NativeRangeTest(self.send_one, self._create_task, self._send_range_summary)
 
     async def _send_range_summary(self, summary, exclude):
@@ -217,6 +219,23 @@ class NativeMeshCoreClient:
                     "rtt_ms": round((time.monotonic() - started) * 1000),
                     "out": "ACK received" if acked else "No delivery ACK"}
 
+    async def _battery_status(self):
+        """Read the local ADC over the existing transport, never over LoRa."""
+        now = time.monotonic()
+        if self._battery_checked_at is None or now - self._battery_checked_at >= 60:
+            self._battery_checked_at = now
+            try:
+                event = await asyncio.wait_for(self.mc.commands.get_bat(), timeout=5)
+                level = event.payload.get("level") if event and event.type == EventType.BATTERY else None
+                if isinstance(level, bool) or not isinstance(level, (int, float)) or not math.isfinite(level) or not 0 < level <= 65535:
+                    raise ValueError("Battery reading unavailable")
+                self.battery = {"voltage": round(level / 1000, 3),
+                                "sampled_at": time.time(), "available": True}
+            except Exception:
+                self.battery = {**self.battery, "available": False}
+        fresh = self.battery["sampled_at"] is not None and time.time() - self.battery["sampled_at"] < 180
+        return {**self.battery, "available": self.battery["available"] and fresh}
+
     async def request(self, method, path, payload=None):
         payload = payload or {}
         try:
@@ -228,10 +247,11 @@ class NativeMeshCoreClient:
             async with self.lock:
                 await self._ensure_connected()
                 nodes = self._nodes()
+                if path == "/api/health":
+                    return {"radio_ok": True, "nodes": len(nodes), "last_message": self.last_message,
+                            "battery": await self._battery_status()}
             if path == "/api/nodes":
                 return {"nodes": nodes}
-            if path == "/api/health":
-                return {"radio_ok": True, "nodes": len(nodes), "last_message": self.last_message}
             targets = payload.get("targets", [])
             valid = {node["id"] for node in nodes}
             if not isinstance(targets, list) or not targets or any(t not in valid for t in targets):

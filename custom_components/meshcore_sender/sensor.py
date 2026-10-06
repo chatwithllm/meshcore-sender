@@ -1,6 +1,7 @@
-"""Range statistics; broadcasts are not delivery acknowledgements."""
+"""Radio battery voltage and range statistics with honest delivery counts."""
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.const import UnitOfElectricPotential
 
 from .const import DOMAIN
 from .entity import MeshCoreEntity
@@ -12,7 +13,34 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("sent", "Messages sent"), ("acked", "Messages acknowledged"),
         ("broadcasts", "Channel broadcasts"), ("interval", "Active test interval"),
         ("started_by", "Test started by"),
-    )])
+    )] + [MeshCoreBatteryVoltage(coordinator)])
+
+
+class MeshCoreBatteryVoltage(MeshCoreEntity, SensorEntity):
+    _attr_device_class = SensorDeviceClass.VOLTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfElectricPotential.VOLT
+    _attr_suggested_display_precision = 3
+    _attr_icon = "mdi:battery"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "battery_voltage", "Battery voltage")
+
+    @property
+    def available(self):
+        return super().available and bool(self.battery.get("available"))
+
+    @property
+    def battery(self):
+        return (self.coordinator.data or {}).get("health", {}).get("battery", {})
+
+    @property
+    def native_value(self):
+        return self.battery.get("voltage") if self.battery.get("available") else None
+
+    @property
+    def extra_state_attributes(self):
+        return {"sampled_at": self.battery.get("sampled_at"), "source": "Radio battery ADC"}
 
 
 class MeshCoreSensor(MeshCoreEntity, SensorEntity):

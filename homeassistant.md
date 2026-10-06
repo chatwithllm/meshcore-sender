@@ -1,5 +1,38 @@
 # Home Assistant
 
+## Battery Monitoring (0.6.3)
+
+The native Bluetooth/BLE-bridge integration reads the connected radio's battery
+ADC through the existing companion connection once per minute. This is a local
+Bluetooth command, not a LoRa transmission; it does not increment range counters.
+The workspace shows voltage and the last sample time. Selecting the battery
+control opens the Home Assistant voltage sensor's history. The sensor uses the
+voltage device class, volts, and measurement state class for Recorder history and
+long-term statistics, subject to the user's Recorder retention/exclusions.
+
+Failed, zero, invalid or stale readings are unavailable, never zero percent or a
+cached value presented as live. Read failures are retried no faster than once per
+minute, bounded to five seconds, and do not remove the inbox or range controls.
+The existing server mode does not yet expose this measurement.
+
+Voltage history can show daytime rises and overnight drops. It is not a measured
+charge percentage, current, charging state, mAh consumption, remaining runtime or
+individual-cell health. Two 18650 cells alone do not identify pack wiring or
+capacity. A charger feeding USB or a regulated supply may prevent the radio ADC
+from measuring the actual pack; verify wiring and compare against a meter before
+using readings for alerts. Actual drain/current monitoring needs suitable charger
+telemetry or a current monitor. No low-battery threshold is assumed.
+
+The user confirmed two parallel 18650 cells directly powering the battery
+connector, charged by a solar charger (not USB). The reading is their shared
+voltage, not separate readings of each cell.
+
+Do not deploy/reload while a range test is active. After deployment verify a plausible fresh voltage, its
+history dialog, mobile layout and continued range/remote behavior. No live battery
+reading has yet been checked at this release checkpoint; see PROJECT_STATUS.md
+for subsequent deployment/live verification. The agent did not open a second
+radio connection.
+
 ## Range Stop Summaries (0.6.2)
 
 Explicit stops from a LoRa controller or HA sidebar/button/service produce a

@@ -16,6 +16,8 @@ handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef)
 class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         namespace = {"DOMAIN": "meshcore_sender", "find_pin_bridge": lambda *args: None,
+                     "er": SimpleNamespace(async_get=lambda hass: SimpleNamespace(
+                         async_get_entity_id=lambda *args: "sensor.radio_battery_voltage")),
                      "list_agents": lambda hass: [], "agent_safe": lambda hass, agent: False}
         node = copy.deepcopy(handler)
         node.decorator_list = []
