@@ -30,7 +30,7 @@ class MeshCoreSensor(MeshCoreEntity, SensorEntity):
             return sum(item.get("acked", 0) for target, item in stats.items()
                        if not target.startswith("chan:"))
         if self.key == "broadcasts":
-            return sum(item.get("acked", 0) for target, item in stats.items()
+            return sum(item.get("broadcasts_sent", item.get("acked", 0)) for target, item in stats.items()
                        if target.startswith("chan:"))
         return test.get(self.key)
 
@@ -45,6 +45,6 @@ class MeshCoreSensor(MeshCoreEntity, SensorEntity):
                              "acknowledged": None if target.startswith("chan:")
                              else item.get("acked", 0)}
             if target.startswith("chan:"):
-                stats[target]["broadcasts_sent"] = item.get("acked", 0)
+                stats[target]["broadcasts_sent"] = item.get("broadcasts_sent", item.get("acked", 0))
         return {"targets": test.get("targets", []), "per_target": stats,
                 "next_due_at": test.get("next_due_at"), "started_by": test.get("started_by")}

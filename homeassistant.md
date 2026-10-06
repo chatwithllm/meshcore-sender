@@ -1,5 +1,36 @@
 # Home Assistant
 
+## Direct Bluetooth mode (0.2.0)
+
+The HACS integration can now connect directly through Home Assistant's local
+Bluetooth adapters or connectable ESPHome Bluetooth proxies. A separate server
+App and server passphrase are not required in this mode.
+
+In Devices & Services > Add Integration > MeshCore Sender, choose **Radio through
+Home Assistant Bluetooth**, enter the companion radio's Bluetooth MAC address,
+and complete the handshake. The radio must be advertising near a proxy; close
+the Mac app and phone apps holding its single Bluetooth connection first.
+
+The integration uses the MeshCore SDK for the radio protocol and Home Assistant's
+Bluetooth device selection plus bleak-retry-connector for proxy connections. It
+keeps a live connection, loads contacts/channel names, and exposes the same range
+target/interval controls, Start/Stop buttons and automation actions. Incoming radio
+messages fire `meshcore_sender_message` events with address, sender/channel, text
+and receive time. Range tests use an async scheduler independent of the browser.
+Stop cancels the current task; slow transmissions skip missed ticks rather than burst.
+Channel transmissions have their own success counters and never count as receiver ACKs.
+
+Direct mode currently covers messaging and range tests. The standalone server's
+conversation UI, favorites/controller settings, AI remote-command interpretation,
+maps and repeater-discovery scheduling have not been migrated into direct mode.
+The existing **server** connection mode retains those functions on its server.
+Native range tests stop on Home Assistant restart; configured radio address and
+dashboard target/interval choices persist.
+
+Nine local tests pass, including actual scheduled second-round sends, cancellation,
+failed sends followed by successful rounds, and channel ACK semantics. Live proxy
+discovery, handshake and entity loading still need verification after deployment.
+
 ## Verified host access (2026-10-05)
 
 The existing Codex Home Assistant header helper provides a working long-lived token.

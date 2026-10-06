@@ -3,20 +3,34 @@
 import voluptuous as vol
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MeshCoreClient, MeshCoreError
-from .const import CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS
+from .const import CONF_ADDRESS, CONF_CONNECTION, CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS
 from .coordinator import MeshCoreCoordinator
 
 
 async def async_setup_entry(hass, entry):
-    client = MeshCoreClient(async_get_clientsession(hass), entry.data[CONF_URL],
-                            entry.data[CONF_PASSPHRASE])
+    if entry.data.get(CONF_CONNECTION) == "bluetooth":
+        from .bluetooth_client import NativeMeshCoreClient
+        client = NativeMeshCoreClient(hass, entry.data[CONF_ADDRESS])
+    else:
+        client = MeshCoreClient(async_get_clientsession(hass), entry.data[CONF_URL],
+                               entry.data[CONF_PASSPHRASE])
     coordinator = MeshCoreCoordinator(hass, entry, client)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except BaseException:
+        if hasattr(client, "close"):
+            await client.close()
+        raise
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    if hasattr(client, "close"):
+        async def stop_native(event):
+            await client.close()
+        entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop_native))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async def handle_action(call):
@@ -63,7 +77,9 @@ async def async_setup_entry(hass, entry):
 async def async_unload_entry(hass, entry):
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
-    hass.data[DOMAIN].pop(entry.entry_id)
+    coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+    if hasattr(coordinator.client, "close"):
+        await coordinator.client.close()
     if not hass.data[DOMAIN]:
         for service in ("start_range_test", "stop_range_test", "send_message"):
             hass.services.async_remove(DOMAIN, service)

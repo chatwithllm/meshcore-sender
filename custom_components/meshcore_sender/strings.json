@@ -3,6 +3,15 @@
   "config": {
     "step": {
       "user": {
+        "title": "Connect to MeshCore",
+        "menu_options": {"bluetooth": "Radio through Home Assistant Bluetooth", "server": "Existing MeshCore server"}
+      },
+      "bluetooth": {
+        "title": "Connect a radio through Bluetooth",
+        "description": "Use a local adapter or Bluetooth proxy. Close other apps holding the radio. Nearby radios: {discovered}",
+        "data": {"address": "Radio Bluetooth MAC address"}
+      },
+      "server": {
         "title": "Connect to MeshCore Sender",
         "description": "Start the MeshCore server App and set up its passphrase in its web interface first.",
         "data": {"url": "Server URL", "passphrase": "Server passphrase"}
@@ -13,6 +22,8 @@
       }
     },
     "error": {
+      "invalid_address": "Enter a Bluetooth MAC address, such as AA:BB:CC:DD:EE:FF.",
+      "cannot_connect_bluetooth": "Radio connection failed. Power on the radio near a proxy and close other connected apps.",
       "invalid_url": "Enter an HTTP or HTTPS server URL without a path or credentials.",
       "invalid_auth": "Check the server passphrase and complete server setup first.",
       "cannot_connect": "Unable to connect to MeshCore Sender. Check the URL and that the App is running."

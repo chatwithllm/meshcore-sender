@@ -1,12 +1,13 @@
 {
   "domain": "meshcore_sender",
   "name": "MeshCore Sender",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "config_flow": true,
   "documentation": "https://github.com/chatwithllm/meshcore-sender/blob/main/homeassistant.md",
   "issue_tracker": "https://github.com/chatwithllm/meshcore-sender/issues",
   "codeowners": ["@chatwithllm"],
   "integration_type": "hub",
   "iot_class": "local_polling",
-  "requirements": []
+  "dependencies": ["bluetooth_adapters"],
+  "requirements": ["meshcore==2.3.14", "bleak-retry-connector>=3.8.0"]
 }

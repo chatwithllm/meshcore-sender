@@ -13,8 +13,10 @@ class MeshCoreEntity(CoordinatorEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_{key}"
         self._attr_name = name
-        self._attr_device_info = DeviceInfo(
+        info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry.entry_id)},
             name="MeshCore Sender", manufacturer="MeshCore",
-            configuration_url=coordinator.client.url,
         )
+        if coordinator.client.url:
+            info["configuration_url"] = coordinator.client.url
+        self._attr_device_info = info
