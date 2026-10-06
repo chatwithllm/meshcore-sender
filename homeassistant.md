@@ -1,5 +1,49 @@
 # Home Assistant
 
+## Native sidebar workspace (0.4.0)
+
+Open **MeshCore** in the Home Assistant sidebar (`/meshcore`). This is an
+authenticated, admin-only custom panel hosted by the integration, not an iframe,
+Mac server or second radio connection. It reuses the configured native Bluetooth
+or PIN-capable BLE bridge connection.
+
+- **Inbox:** incoming and outgoing conversations, replies and explicit delivered,
+  unconfirmed, failed and channel-broadcast states. Phones switch between the
+  inbox list and a full-width conversation with a Back control.
+- **Compose:** multi-recipient messaging, search, contact-type filters, A–Z/Z–A
+  sorting, UTF-8 byte validation and actual radio-provided channel names.
+- **Range:** multiple targets, editable 5–300-second interval and prefix, Start/Stop,
+  live countdown/progress, authenticated starter's name, per-target sent/ACK
+  statistics and a transmission log. The Range tab signals an active test even
+  when another view is open. Channel broadcasts never count as receiver ACKs.
+- **Contacts:** searchable contacts/channels and persisted favorites. Favorites
+  do not authorize remote commands; controller/AI migration remains separate.
+
+History is retained in Home Assistant's native Store, independently for each config
+entry, capped at 1,000 messages. Replayed queued messages are deduplicated by sender,
+conversation, source timestamp and text. Unknown direct senders can be displayed;
+reply becomes available when the radio has a matching contact. Saved history stays
+accessible when a previously configured native radio is offline at startup.
+Messages received before this version are not recoverable from the old event-only
+integration. Mac history and API keys are **not** copied automatically.
+
+Range tests stop on HA restart and are not automatically resumed. Last-used
+workspace test targets, prefix and interval persist. The native inbox and favorites
+are not implemented for **Existing MeshCore server** entries; their server UI
+remains the interface for conversation history.
+
+Remote-command/controller management, AI interpretation, contact import/export,
+repeater map and discovery scans have **not** yet been migrated into this native
+workspace. The original Mac/server implementation remains available in the repo.
+
+Verification: local Python tests cover incoming messages during connection startup,
+history bounds/replay handling, delivery semantics, authenticated starter attribution,
+read-only snapshots and offline history access. `tests/workspace_browser.cjs` checks
+375/390/768/1366px layouts, escaped received content, draft preservation, target
+selection and interval-controlled Start/Stop using fixture actions only. Run it
+with an installed Playwright package (or `PLAYWRIGHT_MODULE` set to its path).
+Deployment and live-radio results are recorded below after installation.
+
 ## PIN-capable BLE bridge mode (0.3.0)
 
 For a PIN-protected radio that rejects standard proxy UART writes, use a dedicated
@@ -75,9 +119,9 @@ and receive time. Range tests use an async scheduler independent of the browser.
 Stop cancels the current task; slow transmissions skip missed ticks rather than burst.
 Channel transmissions have their own success counters and never count as receiver ACKs.
 
-Direct mode currently covers messaging and range tests. The standalone server's
-conversation UI, favorites/controller settings, AI remote-command interpretation,
-maps and repeater-discovery scheduling have not been migrated into direct mode.
+At 0.2.0, direct mode covered messaging and range tests. Version 0.4.0 adds the
+sidebar conversation UI and favorites described above. Controller settings, AI
+remote-command interpretation, maps and repeater-discovery scheduling remain pending.
 The existing **server** connection mode retains those functions on its server.
 Native range tests stop on Home Assistant restart; configured radio address and
 dashboard target/interval choices persist.

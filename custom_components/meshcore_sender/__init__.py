@@ -11,6 +11,13 @@ from .api import MeshCoreClient, MeshCoreError
 from .const import (CONF_ADDRESS, CONF_CONNECTION, CONF_HOST, CONF_PORT,
                     CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS)
 from .coordinator import MeshCoreCoordinator
+from .workspace import async_attach_history, async_setup_workspace, async_remove_workspace
+
+
+async def async_setup(hass, config):
+    # The sidebar remains reachable even while a radio is awaiting reconnection.
+    await async_setup_workspace(hass)
+    return True
 
 
 async def async_setup_entry(hass, entry):
@@ -26,8 +33,13 @@ async def async_setup_entry(hass, entry):
         client = MeshCoreClient(async_get_clientsession(hass), entry.data[CONF_URL],
                                entry.data[CONF_PASSPHRASE])
     coordinator = MeshCoreCoordinator(hass, entry, client)
+    await async_attach_history(hass, entry, client)
     try:
-        await coordinator.async_config_entry_first_refresh()
+        if hasattr(client, "history"):
+            coordinator.data = {"nodes": [], "range": client.range.snapshot(), "health": {"radio_ok": False}}
+            await coordinator.async_refresh()
+        else:
+            await coordinator.async_config_entry_first_refresh()
     except BaseException:
         if hasattr(client, "close"):
             await client.close()
@@ -38,6 +50,7 @@ async def async_setup_entry(hass, entry):
             await client.close()
         entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop_native))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_setup_workspace(hass)
 
     async def handle_action(call):
         entries = hass.data[DOMAIN]
@@ -87,6 +100,7 @@ async def async_unload_entry(hass, entry):
     if hasattr(coordinator.client, "close"):
         await coordinator.client.close()
     if not hass.data[DOMAIN]:
+        async_remove_workspace(hass)
         for service in ("start_range_test", "stop_range_test", "send_message"):
             hass.services.async_remove(DOMAIN, service)
     return True

@@ -1,5 +1,29 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.4.0)
+- Read `homeassistant.md` first for the native HA migration. Current development
+  is in `custom_components/meshcore_sender/`, not the Mac wrapper.
+- `/meshcore` sidebar panel: Inbox, Compose, Range and Contacts/favorites. The
+  frontend module is `www/workspace.js`; authenticated admin-only WebSocket API
+  and Store lifecycle are in `workspace.py`; bounded history in `history.py`.
+- Reuses `NativeMeshCoreClient` and its single radio connection. No new server,
+  TCP client or extra Bluetooth owner. Incoming/outgoing history persists in HA.
+- Live host: HA OS 2026.9.3 at homeassistant.local:8123 (192.168.20.11).
+  Native entry `01M47GQ1BN3ND5XGNKKG3V7C2B` connects through
+  `ble-proxy-c3` / 192.168.100.189:5000 to Heltec V4 / MeshCore-MacMini.
+  Actual PIN is in ESPHome Secrets. Never print it or any API/token secrets.
+- HACS custom integration repository ID 1403528253; update from `main`, run
+  Supervisor's core configuration check, then restart HA. Use the configured
+  Codex HA header helper for authorized API access; do not hardcode tokens.
+- New native inbox starts with this version: old HA events and Mac history are
+  not automatically imported. Range tests stop at restart; defaults persist.
+- Remote-command controller management, AI, contact import/export, map and
+  discovery scans are still pending migration. Do not claim complete Mac parity.
+- Tests: Python unittest suite plus `tests/workspace_browser.cjs` (Playwright).
+  Browser actions use fixtures and must not secretly send live radio messages.
+- The radio was already unavailable during pre-deployment checks. Verify its
+  status after deployment and distinguish workspace readiness from BLE availability.
+
 You are taking over a working project mid-stream. Read this whole brief, then the
 handoff doc, then the code — in that order.
 

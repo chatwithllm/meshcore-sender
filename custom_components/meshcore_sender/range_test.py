@@ -21,7 +21,7 @@ class NativeRangeTest:
     def snapshot(self):
         return {**copy.deepcopy(self.state), "server_now": time.time()}
 
-    def start(self, targets, interval=30, prefix="ping"):
+    def start(self, targets, interval=30, prefix="ping", started_by="Home Assistant"):
         if self.state["running"]:
             raise ValueError("Range test already running")
         interval = int(interval)
@@ -30,7 +30,7 @@ class NativeRangeTest:
         targets = list(dict.fromkeys(targets))
         self.state.update(running=True, targets=targets, target=targets[0],
                           interval=interval, prefix=prefix, sent=0, acked=0,
-                          per_target={}, log=[], started_by="Home Assistant",
+                          per_target={}, log=[], started_by=started_by,
                           next_due_at=time.time())
         self.task = self.create_task(self._run())
         return {"ok": True, **self.snapshot()}

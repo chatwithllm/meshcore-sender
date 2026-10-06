@@ -90,11 +90,12 @@ class NativeMeshCoreClient:
                                  "kind": "public" if idx == 0 else "private"})
             mc.subscribe(EventType.CONTACT_MSG_RECV, self._receive)
             mc.subscribe(EventType.CHANNEL_MSG_RECV, self._receive)
-            await mc.start_auto_message_fetching()
             self.mc = mc
             self.channels = channels
+            await mc.start_auto_message_fetching()
         except BaseException:
             await mc.disconnect()
+            self.mc = None
             raise
 
     def _receive(self, event):
@@ -104,6 +105,25 @@ class NativeMeshCoreClient:
         self.last_message = {"text": payload.get("text", ""),
                              "sender": (contact or {}).get("adv_name") or prefix,
                              "channel": payload.get("channel_idx"), "received_at": time.time()}
+        if hasattr(self, "history"):
+            channel = payload.get("channel_idx")
+            name = (contact or {}).get("adv_name") or f"Unknown node {prefix or ''}"
+            conversation = f"chan:{channel}" if channel is not None else f"pk:{prefix}"
+            target = f"chan:{channel}" if channel is not None else ("dm:" + name if contact else None)
+            text = payload.get("text", "")
+            sender = name
+            if channel is not None:
+                name = next((c["name"] for c in self.channels if c["id"] == target), f"Channel {channel}")
+                sender, separator, body = text.partition(": ")
+                if separator:
+                    text = body
+                else:
+                    sender = "Channel member"
+            self.history.append({"conversation": conversation, "target": target,
+                                 "name": name, "sender": sender, "text": text,
+                                 "direction": "in", "pubkey_prefix": prefix,
+                                 "sender_timestamp": payload.get("sender_timestamp"),
+                                 "hops": payload.get("path_len"), "status": "received"})
         self.hass.bus.async_fire("meshcore_sender_message", {"address": self.address,
                                                              **self.last_message})
 
@@ -117,6 +137,32 @@ class NativeMeshCoreClient:
         return nodes
 
     async def send_one(self, target, text, timeout=20):
+        message_id = None
+        if hasattr(self, "history"):
+            contact = self.mc.get_contact_by_name(target.removeprefix("dm:")) if self.mc and target.startswith("dm:") else None
+            prefix = (contact or {}).get("public_key", "")[:12] or None
+            name = next((n["name"] for n in self._nodes() if n["id"] == target), target) if self.mc else target
+            message_id = self.history.append({"conversation": f"pk:{prefix}" if prefix else target,
+                                             "target": target, "name": name, "sender": "You",
+                                             "pubkey_prefix": prefix, "text": text,
+                                             "direction": "out", "status": "sending"})
+        try:
+            result = await self._transmit(target, text, timeout)
+        except asyncio.CancelledError:
+            if message_id:
+                self.history.update(message_id, status="unconfirmed")
+            raise
+        except Exception:
+            if message_id:
+                self.history.update(message_id, status="failed")
+            raise
+        if message_id:
+            self.history.update(message_id, status=("delivered" if result.get("acked") else
+                                "broadcast" if result.get("ok") and target.startswith("chan:") else
+                                "unconfirmed" if result.get("ok") else "failed"))
+        return result
+
+    async def _transmit(self, target, text, timeout=20):
         async with self.lock:
             await self._ensure_connected()
             started = time.monotonic()
@@ -156,7 +202,8 @@ class NativeMeshCoreClient:
             if not isinstance(targets, list) or not targets or any(t not in valid for t in targets):
                 raise MeshCoreError("Choose available contacts or channels")
             if path == "/api/range/start":
-                return self.range.start(targets, payload.get("interval", 30), payload.get("prefix", "ping"))
+                return self.range.start(targets, payload.get("interval", 30), payload.get("prefix", "ping"),
+                                        payload.get("started_by", "Home Assistant"))
             if path == "/api/send":
                 text = payload.get("text", "").strip()
                 if not text or len(text.encode()) > 150:
@@ -175,3 +222,5 @@ class NativeMeshCoreClient:
             if self.mc:
                 await self.mc.disconnect()
                 self.mc = None
+        if hasattr(self, "history_store"):
+            await self.history_store.async_save(self.history.snapshot())
