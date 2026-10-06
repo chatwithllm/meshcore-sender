@@ -226,8 +226,8 @@ Live radio confirmation/start/stop must be tested deliberately by the user after
 enabling a controller. Browser fixtures and AI preview are safe checks, not a claim
 that remote delivery or execution has been field-tested.
 
-Deployment verified 2026-10-06: HACS revision `a662b2c`, version 0.6.0, HA backup
-`f8aaf3f1`, core check and restart. Radio reconnected, range stopped. 71 Python
+Deployment verified 2026-10-06: HACS revision `d02d846`, version 0.6.0, HA backup
+`f8aaf3f1`, core check and restart. Radio reconnected, range stopped. 73 Python
 checks, geography tests, four-width browser fixtures and live Chromium/WebKit
 Commands checks at 390/1366px passed. The separate tool-free **MeshCore AI Google**
 agent is selected, using existing HA credentials. Its live preview converted

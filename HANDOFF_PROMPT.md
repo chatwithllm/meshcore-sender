@@ -18,10 +18,10 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   incoming radio text to them. A separate Codex conversation subentry named
   `MeshCore AI` was created through the HA config flow using the existing login,
   no tools, default gpt-5.1-codex model and low reasoning. Other agents unchanged.
-- Deployment completed 2026-10-06: HACS installed `a662b2c` / 0.6.0 after
+- Deployment completed 2026-10-06: HACS installed `d02d846` / 0.6.0 after
   verified backup `f8aaf3f1`, core check and restart. Panel registers version
   `workspace.js?v=0.6.0`; radio available with 127 contacts/channels, 38 saved
-  messages, range stopped. Latest test count: 71 Python checks, geography,
+  messages, range stopped. Latest test count: 73 Python checks, geography,
   four-width Chromium fixtures, live Chromium/WebKit Commands at 390/1366px.
   No live radio transmissions, PIN changes or remote Start/Stop tests performed.
 - Codex provider preview failed because its existing OAuth refresh returns 401.
@@ -35,6 +35,9 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   This agent is selected in saved remote settings, but remote control is DISABLED
   with no approved controllers. User must favorite/select/enable the desired
   contact. Permissions have not been inferred from old Mac advertised names.
+- Quick confirmation/cancellation of a pending request bypasses new-command
+  throttling. AI clarify/unrelated chat never silently becomes a range proposal;
+  only an explicit local bare `range test` may propose the controller itself.
 - Next deliberate test: favorite OptimusPrime, enable it in Commands and Save;
   send a fuzzy range request, confirm with 1, inspect Remote starter/ACK stats,
   then request stop and confirm. Also test cancel and permissions after HA restart
