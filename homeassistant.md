@@ -29,7 +29,8 @@ dashboard target/interval choices persist.
 
 Nine local tests pass, including actual scheduled second-round sends, cancellation,
 failed sends followed by successful rounds, and channel ACK semantics. Live proxy
-discovery, handshake and entity loading still need verification after deployment.
+discovery and GATT connection were verified; the companion handshake is blocked
+by Bluetooth authentication, so entity loading and radio delivery remain unverified.
 
 ## Verified host access (2026-10-05)
 
@@ -43,20 +44,31 @@ Never print or commit the token; obtain headers through the configured helper.
 Bluetooth currently reports two connectable **remote** scanners: `ble-proxy-c3`
 and `apollo-msr-2-174b84`. No local scanner was reported. Consequently, the App
 below cannot connect to the radio with the host's current Bluetooth setup.
-Deployment is pending either a local Bluetooth adapter or a transport that uses
-Home Assistant's proxy-capable Bluetooth APIs. No App has been installed.
+The native integration now uses Home Assistant's proxy-capable Bluetooth APIs.
+No separate server App has been installed.
 
 ## HACS installation verified (2026-10-05)
 
 HACS 2.0.5 registered `chatwithllm/meshcore-sender` as a custom Integration
-repository (ID `1403528253`) and installed revision `30ac14c` under
+repository (ID `1403528253`) and installed revision `e0c73d3` under
 `/config/custom_components/meshcore_sender`. HACS reports `installed: true`.
-The live Home Assistant config-flow endpoint loaded the integration and returned
-the user form with `url` and `passphrase` fields. The temporary validation flow
-was removed. No Home Assistant restart was required for this validation.
+Home Assistant was restarted after a successful configuration check. The live
+config flow now offers direct Bluetooth and existing-server connection modes.
 
-Installation is complete, but no MeshCore config entry has been created and no
-radio has been connected on Home Assistant. Proxy support is still pending.
+Installation is complete, but no MeshCore Sender config entry has been created.
+After quitting the Mac app to release Bluetooth, ble-proxy-c3 detected UART device
+`88:56:A6:96:29:59` at approximately -83 to -89 dBm. The proxy opened a connection
+and discovered services, but UART writes failed with GATT error 5, **Insufficient
+authentication**. A second attempt with explicit `BleakClient.pair()` before
+notifications still produced that error. Both incomplete setup flows were removed.
+Do not claim this is the intended companion until its MeshCore handshake succeeds.
+
+Next: confirm the radio's pairing/PIN requirements and bring it close to the proxy.
+Check whether its required authentication is supported by that proxy's firmware;
+do not disable radio security or flash a proxy without the user's approval. A local
+HA Bluetooth adapter or USB radio connection is an alternative if the proxy cannot
+perform the required pairing. No native range test is running. The Mac app was
+left closed to keep the radio's Bluetooth connection available for setup.
 
 This provides two parts: a Supervisor-managed App that runs the existing MeshCore
 server on Home Assistant OS, and a custom integration with dashboard entities and
@@ -135,8 +147,9 @@ The web UI in that revision includes the latest mobile conversation fix.
 
 Development checks cover Python syntax, manifest/config parsing and the authenticated
 client against a mock HTTP server, including expired sessions and rejected commands.
-Deployment, Home Assistant entity loading and real Bluetooth/radio delivery must still
-be verified on Home Assistant OS. No live Home Assistant installation has been modified.
+The HACS integration is deployed on the user's Home Assistant OS host. The separate
+server App is not installed. Home Assistant entity loading and real radio delivery
+must still be verified after resolving the direct-mode authentication blocker.
 
 Live checklist:
 

@@ -152,8 +152,8 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
   target picker, interval number, Start/Stop buttons, running/connection indicators,
   statistics and multi-target actions. Choices persist in config entry options.
 - Read homeassistant.md for installation and the deferred live test checklist.
-- No Home Assistant deployment or hardware testing has been performed. Do not claim
-  this runs on the user's HA host until its local adapter and radio are verified.
+- HACS deployment and live proxy connection attempts have been performed. Do not
+  claim radio control works until the authenticated companion handshake succeeds.
 - The App pins the existing published server commit, avoiding duplicate source trees.
 - Follow-up verified the existing long-lived token through the configured
   /Users/assistant/.codex/helpers/home-assistant-auth.py helper. Do not display it.
@@ -161,12 +161,26 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
   Token is owner/admin; Supervisor access works via WebSocket supervisor/api.
 - Actual Bluetooth inventory has only remote scanners ble-proxy-c3 and
   apollo-msr-2-174b84. No local scanner was reported. The prepared App cannot use
-  these proxies; do not install/start it expecting radio connectivity. Next work
-  needs proxy-aware Bluetooth transport inside HA or a local adapter.
+  these proxies; do not install/start it expecting radio connectivity. Native
+  proxy-aware transport is now implemented in bluetooth_client.py.
 - User requested HACS installation; completed through HACS WebSocket APIs on
-  live HA. Repo ID 1403528253, installed revision 30ac14c, HACS 2.0.5.
-  Live config flow loads its URL/passphrase form without HA restart. Temporary
-  validation flow removed. No configured MeshCore entry or radio connection yet.
+  live HA. Repo ID 1403528253, installed revision e0c73d3, HACS 2.0.5.
+  Configuration check passed and HA restarted. Live config flow offers Bluetooth
+  and server modes. Temporary validation flows removed; no meshcore_sender entry.
+- Native mode loads contacts/channel names, exposes range controls/statistics,
+  schedules cancellable multi-target tests, and fires incoming-message events.
+  AI remote commands, server UI, favorites, maps and discovery are NOT ported.
+  Nine local tests pass; native tests stop on HA restart, saved choices persist.
+- Mac app was quit to release BLE and is left closed. ble-proxy-c3 discovered
+  UART address 88:56:A6:96:29:59 at roughly -83 to -89 dBm. GATT connected, but
+  MeshCore UART writes failed with error 5 (Insufficient authentication). Explicit
+  pairing before notifications was deployed and retried, with the same error.
+  Confirm the radio/PIN requirements and proxy support; do not claim the detected
+  UART device is the intended companion until the handshake succeeds. User was
+  asked whether phone pairing needs a PIN and to move the radio near the proxy.
+  No native range test is running. Do not weaken security or flash devices blindly.
+- Existing unrelated domain meshcore entry (MeshCore Node HABridge) retries a
+  missing USB serial path. It was not changed; keep it separate from our integration.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change
