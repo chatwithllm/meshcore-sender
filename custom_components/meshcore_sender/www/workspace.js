@@ -53,6 +53,7 @@ class MeshCoreWorkspace extends HTMLElement {
     this.mapState = '';
     this.mapStateCache = new Map();
     this.mapSelected = null;
+    this.mapOrigin = '';
     this.mapMarkers = new Map();
   }
   set hass(value) { this._hass = value; if (this.isConnected && !this.timer) this.start(); }
@@ -195,7 +196,24 @@ class MeshCoreWorkspace extends HTMLElement {
     select.disabled=false;select.value=this.mapState;
   }
   mapView() {
-    return `<link rel="stylesheet" href="/meshcore_sender_static/vendor/leaflet.css"><section class="tool"><div class="section-title"><h2>Repeater map</h2><button class="icon" id="map-fit" title="Fit matching repeaters" aria-label="Fit matching repeaters">${icon('fit-to-screen-outline')}</button></div><div class="map-layout"><div><div id="map-canvas" aria-label="Repeater map"></div><div class="map-selection" id="map-selection" role="status">${this.mapNodes().length} repeaters with advertised GPS</div></div><aside class="map-sidebar"><label for="map-state" class="field-label">State</label><select id="map-state" aria-label="Filter by state" disabled><option>Loading states…</option></select><input type="search" id="map-search" placeholder="Search repeaters" aria-label="Search repeaters" value="${escapeHTML(this.mapQuery)}"><div class="map-list" id="map-list"></div></aside></div><p class="muted map-note">Only advertised GPS is shown. State boundaries are approximate; map tiles require internet access.</p></section>`;
+    return `<link rel="stylesheet" href="/meshcore_sender_static/vendor/leaflet.css"><section class="tool"><div class="section-title"><h2>Repeater map</h2><button class="icon" id="map-fit" title="Fit matching repeaters" aria-label="Fit matching repeaters">${icon('fit-to-screen-outline')}</button></div><div class="map-layout"><div><div id="map-canvas" aria-label="Repeater map"></div><div class="map-selection" id="map-selection" role="status">${this.mapNodes().length} repeaters with advertised GPS</div></div><aside class="map-sidebar"><label for="map-state" class="field-label">State</label><select id="map-state" aria-label="Filter by state" disabled><option>Loading states…</option></select><input type="search" id="map-search" placeholder="Search repeaters" aria-label="Search repeaters" value="${escapeHTML(this.mapQuery)}"><label for="map-origin" class="field-label">Distance from</label><select id="map-origin" aria-label="Distance from repeater"><option value="">None</option></select><div class="map-list" id="map-list"></div></aside></div><p class="muted map-note">Distances are straight-line estimates from advertised GPS, not radio routes or coverage. State boundaries are approximate; map tiles require internet access.</p></section>`;
+  }
+  renderMapOrigin() {
+    const select=this.shadowRoot.getElementById('map-origin');if(!select)return;
+    const nodes=this.gpsMapNodes().sort((a,b)=>a.name.localeCompare(b.name));
+    if(this.mapOrigin&&!nodes.some(node=>node.id===this.mapOrigin)) this.mapOrigin='';
+    const signature=JSON.stringify(nodes.map(node=>[node.id,node.name]));
+    if(signature!==this.mapOriginOptionsSignature) {
+      select.innerHTML='<option value="">None</option>'+nodes.map(node=>`<option value="${escapeHTML(node.id)}">${escapeHTML(node.name)}</option>`).join('');
+      this.mapOriginOptionsSignature=signature;
+    }
+    select.value=this.mapOrigin;
+  }
+  mapDistance(node) {
+    const origin=this.gpsMapNodes().find(candidate=>candidate.id===this.mapOrigin);
+    if(!origin||!window.L) return '';
+    const metres=window.L.latLng(origin.lat,origin.lon).distanceTo(window.L.latLng(node.lat,node.lon));
+    return `<span class="map-distance" title="${escapeHTML(`Straight-line distance from ${origin.name}`)}"><span>${(metres/1000).toFixed(1)} km</span><span>${(metres/1609.344).toFixed(1)} mi</span></span>`;
   }
   async initMap() {
     const container=this.shadowRoot.getElementById('map-canvas');
@@ -216,7 +234,7 @@ class MeshCoreWorkspace extends HTMLElement {
       }).addTo(this.leafletMap);
       this.mapResize=new ResizeObserver(()=>this.leafletMap?.invalidateSize());
       this.mapResize.observe(container);
-      this.mapSignature=null;this.mapStateOptionsSignature=null;this.updateMap();this.fitMap();
+      this.mapSignature=null;this.mapStateOptionsSignature=null;this.mapOriginOptionsSignature=null;this.updateMap();this.fitMap();
       if(this.mapSelected) this.selectMapNode(this.mapSelected,false);
     } catch(err) { container.textContent=err.message; }
   }
@@ -232,7 +250,8 @@ class MeshCoreWorkspace extends HTMLElement {
   updateMap() {
     if(!this.leafletMap) return;
     this.renderMapStates();
-    const nodes=this.mapNodes(),signature=JSON.stringify(nodes);
+    this.renderMapOrigin();
+    const nodes=this.mapNodes(),signature=JSON.stringify([nodes,this.gpsMapNodes().find(node=>node.id===this.mapOrigin)]);
     if(signature===this.mapSignature) return;
     if(this.mapSelected&&!nodes.some(node=>node.id===this.mapSelected)) {
       this.mapSelected=null;this.mapPopupOpen=false;
@@ -262,8 +281,9 @@ class MeshCoreWorkspace extends HTMLElement {
   }
   renderMapList() {
     const list=this.shadowRoot.getElementById('map-list');if(!list)return;
+    this.renderMapOrigin();
     const nodes=this.mapNodes().sort((a,b)=>a.name.localeCompare(b.name));
-    list.innerHTML=nodes.map(n=>`<button data-map-node="${escapeHTML(n.id)}" class="map-row ${this.mapSelected===n.id?'selected':''}" aria-pressed="${this.mapSelected===n.id}"><strong>${escapeHTML(n.name)}</strong><small>${escapeHTML(this.nodeState(n)?.name||'')} · ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}</small></button>`).join('') || '<p class="empty-small">No repeaters match these filters</p>';
+    list.innerHTML=nodes.map(n=>`<button data-map-node="${escapeHTML(n.id)}" class="map-row ${this.mapSelected===n.id?'selected':''}" aria-pressed="${this.mapSelected===n.id}"><span class="map-row-top"><strong>${escapeHTML(n.name)}</strong>${this.mapDistance(n)}</span><small>${escapeHTML(this.nodeState(n)?.name||'')} · ${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}</small></button>`).join('') || '<p class="empty-small">No repeaters match these filters</p>';
     list.querySelectorAll('[data-map-node]').forEach(el=>el.onclick=()=>this.selectMapNode(el.dataset.mapNode));
   }
   updateMapSelection() {
@@ -275,6 +295,7 @@ class MeshCoreWorkspace extends HTMLElement {
   selectMapNode(id,open=true) {
     const node=this.mapNodes().find(n=>n.id===id);if(!node||!this.leafletMap)return;
     this.mapSelected=id;
+    if(open) this.mapOrigin=id;
     this.leafletMap.flyTo([node.lat,node.lon],12,{duration:.45});
     if(open) this.mapMarkers.get(id)?.openPopup();
     this.renderMapList();this.updateMapSelection();
@@ -330,6 +351,7 @@ class MeshCoreWorkspace extends HTMLElement {
     on('map-fit','onclick',()=>this.fitMap());
     on('map-search','oninput',e=>{this.mapQuery=e.target.value;this.updateMap();this.fitMap();});
     on('map-state','onchange',e=>{this.mapState=e.target.value;this.updateMap();this.fitMap();});
+    on('map-origin','onchange',e=>{this.mapOrigin=e.target.value;this.renderMapList();});
     on('radio','onchange',e=>{this.entryId=e.target.value;this.selected=null;this.targets.clear();this.signature=null;this.refresh();});
     on('back','onclick',()=>{this.selected=null;this.render();});
     for(const id of ['new-message','compose-empty']) on(id,'onclick',()=>{this.view='compose';this.render();});
@@ -394,6 +416,7 @@ class MeshCoreWorkspace extends HTMLElement {
     progress.value=r.running? r.next_due_at?Math.max(0,Math.min(1,1-seconds/r.interval)):1:0;
   }
   static styles = `
+    .map-row-top{display:flex;align-items:center;gap:10px}.map-row-top strong{flex:1;min-width:0}.map-distance{flex:none;min-width:65px;text-align:right;font-size:12px;font-weight:400;font-variant-numeric:tabular-nums;color:var(--secondary-text-color)}.map-distance>span{display:block;white-space:nowrap}.map-layout .map-sidebar .map-list{height:320px}@media(max-width:700px){.map-layout .map-sidebar .map-list{height:240px}}
     .map-sidebar>select{width:100%;margin-bottom:10px}.map-sidebar .field-label{font-size:12px;margin-bottom:6px}.map-sidebar .map-list{height:394px}@media(max-width:700px){.map-sidebar>select{font-size:16px}.map-sidebar .map-list{height:240px}}
     .map-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;margin-top:16px}.map-sidebar{min-width:0}.map-sidebar>input{width:100%;margin-bottom:10px}.map-list{height:470px;overflow:auto;position:relative}.map-row{display:block;text-align:left;width:100%;border:0;border-bottom:1px solid var(--divider-color);border-radius:0;padding:12px}.map-row strong{display:block;overflow-wrap:anywhere}.map-row small{display:block;color:var(--secondary-text-color);margin-top:6px}.map-row.selected{background:var(--secondary-background-color);box-shadow:inset 3px 0 var(--primary-color)}#map-canvas{height:520px;width:100%;border-radius:6px;z-index:0;background:#dce4dc}.map-selection{padding:12px 0;color:var(--secondary-text-color);font-size:12px;overflow-wrap:anywhere}.map-note{font-size:12px}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card-background-color,#fff);color:var(--primary-text-color,#222)}.leaflet-popup-content p{margin:8px 0}.leaflet-popup-content a{color:var(--primary-color,#0288d1)}.leaflet-container{font:13px Arial,sans-serif}.leaflet-popup-close-button{min-height:24px!important;padding:0!important}.repeater-popup strong{display:block;overflow-wrap:anywhere}dialog{max-width:420px;width:calc(100% - 32px);padding:24px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color)}dialog::backdrop{background:rgba(0,0,0,.45)}dialog p{color:var(--secondary-text-color)}dialog label{display:block;margin-bottom:8px}dialog input{width:100%;font-size:18px}dialog .actions{justify-content:flex-end}nav .range-indicator{width:6px;height:6px}
     :host { display:block;height:100%;color:var(--primary-text-color,#202124);background:var(--primary-background-color,#f5f6f8);font:14px var(--paper-font-body1_-_font-family,Roboto,Arial,sans-serif);letter-spacing:0; }

@@ -1,5 +1,23 @@
 # Home Assistant
 
+## Repeater Distances (0.5.2)
+
+Selecting a repeater marker or list row sets **Distance from** to that repeater.
+Each visible list row then shows straight-line distances in kilometres and miles
+to one decimal place, including zero for the reference. The dropdown also accepts
+any GPS repeater, independently of state/name filters; **None** hides distances.
+The reference survives filtering, polling and switching workspace tabs, even if
+its marker is filtered out. If the reference disappears or loses valid GPS, the
+distances are cleared rather than using stale coordinates.
+
+Distances use Leaflet's geodesic `LatLng.distanceTo`, with metres converted using
+1,000 metres/km and 1,609.344 metres/mile. They are approximate spherical-Earth
+distances from advertised coordinates, not terrain-adjusted/radio-route distances
+or coverage predictions. No radio transmissions or external lookups are needed.
+Browser fixtures verify the known BlairOneW/Bethpage pair (369.7 km / 229.7 mi),
+zero distance, reference changes/clearing, filter/poll/tab persistence and layout
+at 375/390/768/1366px.
+
 ## Map State Filter (0.5.1)
 
 The Map sidebar has a **State** dropdown above repeater search. It lists states

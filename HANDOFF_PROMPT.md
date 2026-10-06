@@ -1,6 +1,12 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.1)
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.2)
+- Version 0.5.2 adds straight-line km/mi distances to each Map list row. Clicking
+  a marker/row changes the reference; the Distance from dropdown can choose any
+  valid GPS repeater or None. Reference is independent of state/name filtering
+  and persists across polling/tab changes. A missing/invalid reference is cleared.
+  Uses Leaflet distanceTo; no terrain, route or coverage inference. Browser tests
+  check known distances, zero, reference changes/clearing and persistence.
 - Version 0.5.1 adds a GPS-derived State dropdown to Map. Both markers/list and
   name search share the filter; excluded selections are cleared and matching
   locations fit automatically. Local Census 2024 boundaries and bundled Turf

@@ -132,7 +132,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.5.1",
+            module_url="/meshcore_sender_static/workspace.js?v=0.5.2",
             require_admin=True,
         )
         state["panel"] = True
