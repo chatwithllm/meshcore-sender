@@ -137,3 +137,15 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         await self.handle("fuzzy request")
         self.execute.assert_not_awaited()
         self.assertIn("timed out", self.send.call_args.args[1])
+
+    async def test_duplicate_target_names_fail_closed(self):
+        self.nodes.append(dict(self.nodes[0]))
+        await self.handle("range test OptimusPrime every 30s")
+        self.assertFalse(self.engine.pending)
+        self.execute.assert_not_awaited()
+
+    async def test_failed_confirmation_reply_does_not_arm_command(self):
+        self.send.side_effect = RuntimeError("Radio offline")
+        with self.assertRaises(RuntimeError):
+            await self.handle("stop")
+        self.assertFalse(self.engine.pending)

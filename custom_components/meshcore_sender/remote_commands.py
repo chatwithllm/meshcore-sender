@@ -83,7 +83,8 @@ class RemoteCommands:
         if action != "start":
             return {"action": action}
         targets = proposal.get("targets")
-        valid = {n["id"] for n in self.nodes()}
+        nodes = self.nodes()
+        valid = {n["id"] for n in nodes if sum(other["id"] == n["id"] for other in nodes) == 1}
         interval = proposal.get("interval", 30)
         prefix = proposal.get("prefix", "ping")
         if (not isinstance(targets, list) or not 1 <= len(targets) <= 8
@@ -141,7 +142,6 @@ class RemoteCommands:
         proposal = self.validate(proposal)
         if proposal["action"] not in ("start", "stop"):
             return
-        self.pending[key] = {"proposal": proposal, "expires": time.monotonic() + 120}
         if proposal["action"] == "start":
             names = {n["id"]: n["name"] for n in self.nodes()}
             label = ", ".join(names[t] for t in proposal["targets"])
@@ -154,6 +154,8 @@ class RemoteCommands:
         else:
             text = "Stop the current range test? 1 confirm, cancel. Expires 2 min."
         await self.reply(key, name, text)
+        if self.allowed(key):
+            self.pending[key] = {"proposal": proposal, "expires": time.monotonic() + 120}
 
     async def handle(self, key, name, text):
         if not self.allowed(key):
