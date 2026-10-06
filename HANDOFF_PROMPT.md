@@ -155,6 +155,14 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
 - No Home Assistant deployment or hardware testing has been performed. Do not claim
   this runs on the user's HA host until its local adapter and radio are verified.
 - The App pins the existing published server commit, avoiding duplicate source trees.
+- Follow-up verified the existing long-lived token through the configured
+  /Users/assistant/.codex/helpers/home-assistant-auth.py helper. Do not display it.
+  Local HA is http://homeassistant.local:8123 (192.168.20.11), version 2026.9.3.
+  Token is owner/admin; Supervisor access works via WebSocket supervisor/api.
+- Actual Bluetooth inventory has only remote scanners ble-proxy-c3 and
+  apollo-msr-2-174b84. No local scanner was reported. The prepared App cannot use
+  these proxies; do not install/start it expecting radio connectivity. Next work
+  needs proxy-aware Bluetooth transport inside HA or a local adapter.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change

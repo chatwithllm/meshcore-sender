@@ -1,5 +1,20 @@
 # Home Assistant
 
+## Verified host access (2026-10-05)
+
+The existing Codex Home Assistant header helper provides a working long-lived token.
+It authenticates as an owner/admin on `http://homeassistant.local:8123`
+(`192.168.20.11:8123`). Home Assistant is version 2026.9.3, with a healthy,
+supported Supervisor. Read Supervisor endpoints using the authenticated WebSocket
+`supervisor/api` command; the REST proxy intentionally does not expose these paths.
+Never print or commit the token; obtain headers through the configured helper.
+
+Bluetooth currently reports two connectable **remote** scanners: `ble-proxy-c3`
+and `apollo-msr-2-174b84`. No local scanner was reported. Consequently, the App
+below cannot connect to the radio with the host's current Bluetooth setup.
+Deployment is pending either a local Bluetooth adapter or a transport that uses
+Home Assistant's proxy-capable Bluetooth APIs. No App has been installed.
+
 This provides two parts: a Supervisor-managed App that runs the existing MeshCore
 server on Home Assistant OS, and a custom integration with dashboard entities and
 automation actions. The Mac is no longer needed once the radio connects to this App.
