@@ -18,6 +18,16 @@ Browser fixtures verify the known BlairOneW/Bethpage pair (369.7 km / 229.7 mi),
 zero distance, reference changes/clearing, filter/poll/tab persistence and layout
 at 375/390/768/1366px.
 
+Deployed on 2026-10-06: HACS installed `510f2b1` (0.5.2), after verified HA
+backup `f7dbac80`, a passing configuration check and restart. Radio connected
+with 125 contacts/channels and 92 GPS repeaters; range stopped. Live checks at
+390/1366px verify all 11 Indiana rows show km/mi from BlairOneW, with zero at
+the reference and persistence through polling. Death Star Repeater shows
+8.3 km / 5.2 mi. Existing map selection, state/search filtering, popup close
+and PIN-dialog cancellation also pass with zero MeshCore page errors. All 43
+Python tests, geography checks and four-width browser fixtures pass. No live
+radio messages, firmware updates or PIN changes were made.
+
 ## Map State Filter (0.5.1)
 
 The Map sidebar has a **State** dropdown above repeater search. It lists states

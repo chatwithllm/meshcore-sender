@@ -7,6 +7,12 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.2)
   and persists across polling/tab changes. A missing/invalid reference is cleared.
   Uses Leaflet distanceTo; no terrain, route or coverage inference. Browser tests
   check known distances, zero, reference changes/clearing and persistence.
+- Latest deployment: `510f2b1` / 0.5.2 on 2026-10-06, HA backup `f7dbac80`,
+  core check and restart verified. Radio connected with 125 contacts/channels,
+  92 GPS repeaters and range stopped. Live 390/1366px checks confirm distances
+  in both units for all 11 Indiana rows from BlairOneW, with zero for origin
+  and polling persistence. 43 Python tests, geography and four-width browser
+  fixtures pass; no live sends or firmware/PIN changes.
 - Version 0.5.1 adds a GPS-derived State dropdown to Map. Both markers/list and
   name search share the filter; excluded selections are cleared and matching
   locations fit automatically. Local Census 2024 boundaries and bundled Turf
