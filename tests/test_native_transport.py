@@ -20,7 +20,8 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.radio = SimpleNamespace(
             connect=AsyncMock(return_value=SimpleNamespace(type="connected")),
             ensure_contacts=AsyncMock(),
-            commands=SimpleNamespace(get_channel=AsyncMock(return_value=SimpleNamespace(
+            commands=SimpleNamespace(get_contacts=AsyncMock(return_value=SimpleNamespace(type="contacts")),
+                                     get_channel=AsyncMock(return_value=SimpleNamespace(
                 type="channel", payload={"channel_name": "Actual channel"}))),
             subscribe=Mock(), start_auto_message_fetching=AsyncMock(),
             disconnect=AsyncMock(), contacts={}, is_connected=True,
@@ -47,6 +48,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         client = self.Client(self.hass, "bridge.local:5000", host="bridge.local", port=5000)
         result = await client.request("GET", "/api/nodes")
         self.tcp.assert_called_once_with("bridge.local", 5000)
+        self.radio.commands.get_contacts.assert_awaited_once_with(timeout=30)
         self.ble.assert_not_called()
         self.assertEqual(result["nodes"][0]["name"], "Actual channel")
         await client.close()
@@ -63,6 +65,14 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.radio.connect.side_effect = ConnectionError("Connection refused")
         client = self.Client(self.hass, "bridge.local:5000", host="bridge.local")
         with self.assertRaisesRegex(RuntimeError, "Connection refused"):
+            await client.request("GET", "/api/nodes")
+        self.radio.disconnect.assert_awaited_once()
+        self.assertIsNone(client.mc)
+
+    async def test_failed_contact_fetch_does_not_create_empty_success(self):
+        self.radio.commands.get_contacts.return_value = SimpleNamespace(type="error")
+        client = self.Client(self.hass, "bridge.local:5000", host="bridge.local")
+        with self.assertRaisesRegex(RuntimeError, "contact retrieval failed"):
             await client.request("GET", "/api/nodes")
         self.radio.disconnect.assert_awaited_once()
         self.assertIsNone(client.mc)

@@ -76,7 +76,9 @@ class NativeMeshCoreClient:
             event = await asyncio.wait_for(mc.connect(), timeout=30)
             if event is None or event.type == EventType.ERROR:
                 raise MeshCoreError("Radio did not respond to the companion handshake")
-            await mc.ensure_contacts()
+            contacts = await mc.commands.get_contacts(timeout=30)
+            if contacts is None or contacts.type == EventType.ERROR:
+                raise MeshCoreError("Radio contact retrieval failed; try setup again when the radio is ready")
             channels = []
             for idx in range(8):
                 event = await mc.commands.get_channel(idx)
