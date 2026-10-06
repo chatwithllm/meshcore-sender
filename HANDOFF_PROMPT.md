@@ -181,6 +181,23 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
   No native range test is running. Do not weaken security or flash devices blindly.
 - Existing unrelated domain meshcore entry (MeshCore Node HABridge) retries a
   missing USB serial path. It was not changed; keep it separate from our integration.
+- Latest follow-up: user approved converting ble-proxy-c3 and confirmed default
+  PIN. ESPHome backup 7c8c8ebd verified before editing. C3 is now a dedicated
+  PIN-capable BLE-to-TCP bridge at 192.168.100.189:5000, not a general proxy.
+  Wi-Fi/API/OTA retained; Apollo kitchen sensor unchanged. Both bridge and repair
+  button firmware compiled and uploaded successfully through ESPHome dashboard.
+- Native TCP bridge mode added (0.3.0, b2cdff1 installed through HACS); HA config
+  check passed and restarted. Live setup menu includes bridge mode. Twelve local
+  tests pass, including transport selection, failed-handshake cleanup and range.
+- Live radio name is MeshCore-MacMini, MAC 88:56:A6:96:29:59. Pairing still fails
+  with confirmation mismatch reason 81. Repair Heltec pairing button was invoked
+  and only cleared this radio's bond on C3; it did not resolve authentication.
+  User asked to verify displayed PIN/update meshcore_radio_pin in ESPHome Secrets.
+  Recompile/upload after any secret change. Do not print or commit that secret.
+  No meshcore_sender config entry or native range test is running yet.
+- ESPHome dashboard uses WebSocket ws commands (not legacy edit/compile REST).
+  firmware/install returns the COMPILE job and queues a dependent UPLOAD job:
+  verify BOTH exit codes before reporting deployment. No pending jobs at checkpoint.
 
 DEFINITION OF DONE FOR THE NEXT ROUND
 Add-contact workflow implemented and verified against real device output; any UI change

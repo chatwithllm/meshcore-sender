@@ -28,3 +28,17 @@ meshcore_ble_bridge:
   port: 5000
   force_encryption: true
   wait_for_auth: true
+
+button:
+  - platform: template
+    name: Repair Heltec pairing
+    id: repair_meshcore_pairing
+    entity_category: config
+    on_press:
+      then:
+        - lambda: id(meshcore_ble).set_enabled(false);
+        - delay: 2s
+        - ble_client.remove_bond:
+            id: meshcore_ble
+        - delay: 1s
+        - lambda: id(meshcore_ble).set_enabled(true);

@@ -27,8 +27,25 @@ verified before treating it as an unattended service.
 
 User approved converting ble-proxy-c3 and confirmed the default radio PIN. The
 Apollo kitchen sensor is not changed. Before edits, Supervisor created and verified
-an ESPHome backup, slug `7c8c8ebd`. Bridge configuration is saved on HA; firmware
-compilation/deployment and the authenticated handshake are still pending.
+an ESPHome backup, slug `7c8c8ebd`. The bridge firmware compiled and uploaded
+successfully to `192.168.100.189`; its LAN listener on port 5000 is reachable.
+HACS installed integration revision `b2cdff1` (0.3.0), HA's configuration check
+passed, and HA was restarted. The bridge option is verified in the live setup menu.
+
+Live BLE logs identify the radio as **MeshCore-MacMini** at
+`88:56:A6:96:29:59`. Authentication currently fails with reason 81 (pairing
+confirmation mismatch); no MeshCore handshake has succeeded. A second firmware
+update exposes `button.ble_proxy_c3_repair_heltec_pairing`. This button disables
+the BLE client, removes only this radio's bond from the bridge, then reconnects.
+It was invoked through HA, but authentication still failed afterward. The user
+has been asked to verify the PIN currently displayed on the Heltec and update
+`meshcore_radio_pin` in ESPHome Secrets if it differs from the confirmed default.
+Changing that secret requires recompiling/uploading the bridge firmware.
+
+No MeshCore Sender config entry or range test is active. After resolving pairing,
+configure the **PIN-capable BLE bridge** with host `192.168.100.189`, port `5000`.
+Verify contact/channel entities before testing message transmission. Do not retry
+the original direct Bluetooth flow for this PIN-protected connection.
 
 ## Direct Bluetooth mode (0.2.0)
 
