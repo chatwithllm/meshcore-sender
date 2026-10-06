@@ -14,6 +14,17 @@ sidebar; phones retain the compact 340px map and stack the taller list below it.
 Four-width browser checks verify ordering, reference clearing, persistence and
 minimum list heights alongside existing map/distance checks.
 
+Installed on 2026-10-06 through HACS revision `d2e34a3`, after verified backup
+`45a61ce6` and a passing configuration check. A range test was active, so HA was
+not restarted and the test remained running. Static assets are served without
+cache headers: refreshing the workspace loads the new display immediately.
+The in-memory panel URL still has the previous version query until HA's next
+normal restart; no restart is needed for these sorting/height features.
+Live 390/1366px checks verify ascending/descending distance order and polling
+persistence, with list heights 464/506px. All 43 Python tests and four-width
+browser fixtures pass, with zero MeshCore page errors. No radio messages were
+sent by the verification, and no firmware/PIN changes were made.
+
 ## Repeater Distances (0.5.2)
 
 Selecting a repeater marker or list row sets **Distance from** to that repeater.

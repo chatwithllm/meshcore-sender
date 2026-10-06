@@ -6,6 +6,13 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
   disabled and revert to A-Z. Filter/poll/tab changes retain the chosen mode.
   Map list height is responsive (480-700px desktop, 360-560px mobile) and the
   desktop map stretches with the sidebar. Four-width browser checks cover both.
+- Latest installation: `d2e34a3` / 0.5.3 via HACS on 2026-10-06, verified HA
+  backup `45a61ce6` and core check. An active range test was preserved: NO HA
+  restart. Fresh workspace loads serve the new static JS (cache headers off),
+  while the in-memory panel's old version query updates at the next normal
+  restart. Do not force a restart while the test is running. Live 390/1366px
+  nearest/farthest checks pass, with 464/506px list heights and no page errors.
+  43 Python tests and four-width browser fixtures pass; no live sends/PIN changes.
 - Version 0.5.2 adds straight-line km/mi distances to each Map list row. Clicking
   a marker/row changes the reference; the Distance from dropdown can choose any
   valid GPS repeater or None. Reference is independent of state/name filtering
