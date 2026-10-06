@@ -6,10 +6,15 @@ remote command control from an allowlisted contact or channel.
 
 ## Home Assistant
 
-An experimental Home Assistant OS App runs the server on the Home Assistant host
-using local Bluetooth. A custom integration adds target/interval controls, Start/Stop
-buttons, range statistics and automation actions. See [Home Assistant setup](homeassistant.md).
-Once moved to that host, the radio server no longer depends on Mac login.
+The native Home Assistant integration provides an authenticated sidebar with Inbox,
+Compose, Range, Contacts, Commands and Map. It uses HA Bluetooth or a PIN-capable
+BLE bridge, without a Mac login or a separate Mac server. Remote commands can reuse
+supported tool-free HA conversation agents, with approved contacts and confirmation.
+The older server/App mode remains available but is not the current native deployment.
+
+See [Home Assistant setup](homeassistant.md), [current status and pipeline](PROJECT_STATUS.md),
+and [agent handover](HANDOFF_PROMPT.md). The Mac/server commands and environment
+variables below apply to standalone mode, not the native HA integration.
 
 ## Run locally
 

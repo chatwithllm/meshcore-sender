@@ -1,5 +1,24 @@
 # Home Assistant
 
+## Current Status (0.6.0)
+
+The native HA workspace is deployed with Inbox, Compose, Range, Contacts,
+Commands and Map. Remote commands and tool-free HA AI interpretation are built;
+the separate **MeshCore AI Google** agent is selected and preview-verified.
+Remote control is disabled with no approved controllers until the user opts in.
+The separate Codex agent still needs login reauthorization (OAuth refresh 401).
+
+No coding or deployment process remains in progress. Live controller confirmation,
+start/stop and enabled-controller restart testing are awaiting user validation.
+Contact URI import/export, discovery schedules and additional map layers remain
+in the pipeline, not implemented in native HA. Channel-based controllers are
+deferred pending an authorization design.
+
+See [Project status and handover](PROJECT_STATUS.md) for completed features,
+acceptance steps, prioritized pipeline and agent resumption instructions. The
+version-specific sections below include historical deployment details; the current
+deployed version is 0.6.0, not the older map releases.
+
 ## Map Sorting And Height (0.5.3)
 
 Map **Sort** offers Name A-Z, Name Z-A, Nearest first and Farthest first.

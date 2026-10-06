@@ -1,4 +1,15 @@
-TASK: continue hardening a local MeshCore messaging app on macOS
+TASK: continue the native MeshCore Home Assistant integration and workspace
+
+START HERE
+- Read `PROJECT_STATUS.md` for the authoritative completed / awaiting-validation /
+  pipeline summary and the next acceptance test. Updated 2026-10-06.
+- Current HA code is deployed; no coding/build/deployment process is still running.
+  Remote control remains disabled until the user explicitly selects a controller.
+- Google AI preview is verified. Codex OAuth refresh is blocked by HTTP 401 and
+  requires reauthorization. Live remote radio start/stop still needs user testing.
+- Read `homeassistant.md` for setup/security/deployment and use the checkpoint
+  below for implementation context. Older release/Mac notes are historical and
+  must not be mistaken for active tasks or current runtime state.
 
 CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
 - Native remote commands now live in `remote_commands.py`, with HA credential
@@ -42,6 +53,8 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   send a fuzzy range request, confirm with 1, inspect Remote starter/ACK stats,
   then request stop and confirm. Also test cancel and permissions after HA restart
   when no range test is active. Reauthorize Codex separately before selecting it.
+
+HISTORICAL HA RELEASE NOTES (0.5.x AND EARLIER)
 - Rollout correction: user's existing Safari session did not show Sort after
   the file-only update. Once the range test was confirmed stopped, the pending
   HA restart was completed (backup `45a61ce6`). The registered module URL is
@@ -137,8 +150,10 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   OptimusPrime incoming message, reply, then Start/Stop at 30 seconds with
   starter attribution and successive transmission/ACK checks.
 
-You are taking over a working project mid-stream. Read this whole brief, then the
-handoff doc, then the code — in that order.
+HISTORICAL MAC/SERVER HANDOVER
+The following records the pre-native-HA app and earlier migration checkpoints.
+It is not the current task list or deployment state. Read `PROJECT_STATUS.md`
+and `homeassistant.md` first; use these notes only for behavior to preserve or port.
 
 WHAT WE ARE BUILDING
 A small local-only web app that sends and receives messages over a Heltec V4 LoRa
@@ -150,7 +165,7 @@ on a mesh with ~8 nodes, ~44 repeaters and 2 room servers in range; their real u
 are one-to-one texting and signal/range testing.
 
 WHERE EVERYTHING IS
-- HANDOFF DOC (authoritative — read it fully before touching anything):
+- MAC/SERVER REFERENCE (historical, not authoritative for native HA status):
   ~/dev/active/meshcore-sender/meshcore_mac_ble.md
 - App: ~/dev/active/meshcore-sender/
   Run: cd ~/dev/active/meshcore-sender && python3 src/server.py   ->  http://127.0.0.1:8788
@@ -211,11 +226,12 @@ WORKING TODAY (all verified; evidence in the doc's VERIFIED table)
 - Flood-advert button; message templates, Enter-to-submit login, LAN-capable Mac app binding,
   session cookie + CSRF.
 
-NOT BUILT — NEXT TASKS IN ORDER
+HISTORICAL MAC TEST FOLLOW-UPS (NOT THE CURRENT HA BACKLOG)
 1. User needs to test the Contacts drawer later: Show URI with blank contact,
    export an existing contact URI, import a `meshcore://...` URI if available,
    then Refresh and confirm the contact appears.
-2. Add tests when the project grows enough to support them.
+2. Original note requested tests when the project grew. Superseded: native HA now
+   has 73 Python tests plus geography/browser checks; see `PROJECT_STATUS.md`.
 
 AI INTERPRETER STATUS
 - Configuration UI, local secret storage and provider client are wired. The parser is
@@ -348,6 +364,8 @@ HOME ASSISTANT CHECKPOINT (2026-10-05)
   Range running is OFF; sent/ACK counts 0. No test messages were sent. Next live
   check is a deliberate Start/Stop test with receiver ACK/timing verification.
 
-DEFINITION OF DONE FOR THE NEXT ROUND
-Add-contact workflow implemented and verified against real device output; any UI change
-either confirmed in a rendered signed-in view or explicitly reported as unverified.
+HISTORICAL MAC DEFINITION OF DONE
+The old add-contact implementation/test objective above is not the current HA task.
+For the next round, use the acceptance test and pipeline in `PROJECT_STATUS.md`.
+Any new UI change must still be checked in a rendered signed-in view or explicitly
+reported as unverified.
