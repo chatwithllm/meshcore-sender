@@ -6,16 +6,20 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 ## Current Checkpoint
 
 - Active product: native Home Assistant integration and `/meshcore` sidebar.
-- HA integration version: **0.6.0**, deployed code revision **`d02d846`**.
+- HA integration version: **0.6.1**, HACS-installed code revision **`6bb5dcd`**.
   The later bridge transport fix below changes ESPHome firmware, not HA code;
   it does not require an HA restart.
-- Deployment: HACS install, verified HA backup **`f8aaf3f1`**, configuration check,
+- Deployment: HACS install, verified HA backup **`2fa9ba3d`**, configuration check,
   restart and radio reconnection completed. Registered frontend:
-  `/meshcore_sender_static/workspace.js?v=0.6.0`.
-- Latest live check after connection recovery: **remote control enabled**, **two
-  approved controllers**, **range test running for OptimusPrime every 30 seconds**,
-  starter **Remote: OptimusPrime**, first ping **1 sent / 1 ACK**. HA received the
-  user's new command and `1` confirmation. Google was the previously verified AI agent.
+  `/meshcore_sender_static/workspace.js?v=0.6.1`. Startup/reconnection was verified
+  after the initial three-minute deployment verifier expired; no second restart
+  was issued. Panel module URL is nested under `config._panel_custom` in get_panels.
+- Latest live check: **remote control enabled**, **two approved controllers**,
+  **three favorites**, **MeshCore AI Google selected**, **range test stopped**,
+  radio available with **142 contacts/channels**, **zero pending requests**.
+  Before this deployment, the user's command and `1` confirmation successfully
+  started a 30-second OptimusPrime test with remote attribution and ACKs; the user
+  stopped it before deployment. No agent-issued menu/test transmissions were sent.
   Recheck live settings before changing permissions or deploying.
 - Bridge firmware: pinned upstream **`db6bfdef4681294bf6439d0d001e8dfeb430b556`**,
   installed by ESPHome job **`e0a617fa16aa`**, exit 0, after ESPHome backup
@@ -26,7 +30,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
   the range test was stopped; the fresh handshake recovered pending inbox data
   and 142 contacts/channels. Subsequent command and confirmation arrived live.
   After future bridge firmware updates, verify a fresh handshake/inbox event,
-  not just cached `available` status. Never reload during this active test.
+  not just cached `available` status. Never reload during an active test.
 - No implementation, deployment, build or test process was left running by the agent.
 - Original Mac/server implementation remains saved in the repository. Mac history,
   API keys and controller permissions were not automatically imported into HA.
@@ -40,12 +44,13 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 | Compose and contacts | Multiple recipients, actual radio channel names, search/type filters, name sorting and persisted favorites. |
 | Range tests | Multiple targets, 5-300-second interval, prefix, starter attribution, countdown, per-target sent/ACK/broadcast statistics and log. |
 | Remote commands | Commands tab, persistent public-key-bound direct controllers, local command parsing, expiring confirmation, cancellation, queue/rate limits and recent outcomes. |
+| Numbered targets | 0.6.1 deployed: favorite contacts/channels, stable numbered menu, next/back pages, multiple selections and interval override; a separate confirmation still gates execution. |
 | HA AI reuse | Tool-free conversation-agent selector, validated JSON proposals, fallback-only AI interpretation and non-transmitting preview. Separate Google/Codex subentries reuse their existing HA credentials. |
 | AI verification | Google preview translated "Can you keep checking OptimusPrime every half minute?" to a start proposal for that contact at 30 seconds, without executing it. |
 | Runtime PIN | Masked admin dialog and persistent bridge override, without rebuilding firmware for subsequent PIN changes. |
 | BLE reply truncation | Updated bridge firmware preserves complete MeshCore commands instead of independent 20-byte writes. HA reconnection verified; recipient-side retry still required. |
 | Repeater map | Advertised GPS, marker/list selection, persistent popup close, local state classification/filter, reference-based km/mi distances, name/distance sorting and taller responsive list. |
-| Verification | 73 Python tests, geography tests, four-width Chromium fixtures and live Chromium/Safari-WebKit Commands checks at 390/1366px passed. |
+| Verification | 83 Python tests, compiled pinned-upstream bridge frame check, geography tests and four-width Chromium fixtures pass. Earlier live Chromium/Safari-WebKit Commands checks at 390/1366px also passed. |
 | Documentation | Setup, security boundaries, deployment history and agent handover are saved in GitHub. |
 
 Confirmation applies to range start/stop. `status` is read-only and sends a reply;
@@ -58,15 +63,15 @@ range test. AI cannot access household-control tools through the MeshCore adapte
 No coding work is currently in flight. These items need user participation or a
 deliberate follow-up, and must not be described as verified end to end:
 
-- **Numbered range-target menu: implemented locally, NOT deployed.** A bare
+- **Numbered range-target menu: deployed, awaiting handset acceptance.** A bare
   `range test`, `range test every 60s`, `help`, or `targets` opens an alphabetical
   menu of favorite contacts/channels. Numbers stay bound to that menu snapshot;
   `next`/`back` page through 150-byte UTF-8 packets. Reply `1`, `1,2`, or
   `1 every 60s` to select, then a separate `1`/`confirm` approves the resulting
   full target/interval proposal. Menus expire after two minutes, are not restored
   after restart, and clear on cancel/permission changes. Removed favorites and
-  changed identities cannot execute. 83 Python tests pass. Live test is active;
-  defer deployment/reload until the user stops it. The menu scope question
+  changed identities cannot execute. 83 Python tests pass. The user stopped the
+  live test; 0.6.1 was installed and HA reconnection verified. The menu scope question
   (favorites/all available/separate approved list) was asked; favorites is the
   conservative first-version default pending the user's answer. Favorites are
   menu candidates, NOT controller authorization or a new restriction on explicit
@@ -98,9 +103,7 @@ deliberate follow-up, and must not be described as verified end to end:
 
 ### Next Acceptance Test
 
-After the active test stops, deploy the staged menu change using the normal
-backup/HACS/config-check/reload process. Increment the integration release
-version before publishing. Then also test `range test` -> numbered menu -> target
+0.6.1 is now published and deployed. Test `range test` -> numbered menu -> target
 number -> separate confirmation, a channel/multiple targets, `next`/`back`,
 `1 every 60s`, invalid numbers and cancel. No menu-specific live transmissions
 were performed by the agent.

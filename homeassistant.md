@@ -1,8 +1,8 @@
 # Home Assistant
 
-## Current Status (0.6.0)
+## Current Status (0.6.1)
 
-### Staged numbered target menus (not deployed)
+### Numbered target menus (0.6.1)
 
 A bare `range test` or `targets` will reply with an alphabetical numbered menu
 of favorite contacts and channels. Select `1` or `1,2`; use `1 every 60s` to
@@ -19,18 +19,23 @@ requests retain their existing validation and confirmation boundaries. The user
 was asked to choose favorites/all available/a separate approved target list;
 favorites is the current implementation default pending that answer.
 
-83 Python tests pass. These changes are local, not published or installed in HA.
-The active range test must stop before deployment/reload; no live menu test was
-sent. Read `PROJECT_STATUS.md` for the latest live state and resume instructions.
+83 Python tests, the compiled bridge frame check, geography checks and four-width
+Chromium fixtures pass. Published `6bb5dcd` and installed through HACS after HA
+backup `2fa9ba3d`, configuration check and restart. Verified module URL v=0.6.1,
+142 contacts/channels, remote enabled, two controllers, three favorites, Google
+agent retained, range stopped and no pending requests. HA startup outlasted the
+initial verifier; later live checks verified recovery without another restart.
+No live menu message was sent by the agent; handset acceptance remains pending.
+Read `PROJECT_STATUS.md` for the latest state and resume instructions.
 
 The native HA workspace is deployed with Inbox, Compose, Range, Contacts,
 Commands and Map. Remote commands and tool-free HA AI interpretation are built;
 the separate **MeshCore AI Google** agent is selected and preview-verified.
-Remote control is now enabled with two user-approved controllers; an OptimusPrime
-range test is running every 30s with remote starter attribution and ACKs.
+Remote control is enabled with two user-approved controllers. The user stopped
+the successful remotely started OptimusPrime test before this deployment.
 The separate Codex agent still needs login reauthorization (OAuth refresh 401).
 
-No build/deployment process remains running. Numbered menus are staged above;
+No build/deployment process remains running. Numbered menus are deployed above;
 confirmed remote start is verified, while stop/cancel, fuzzy AI interpretation
 and enabled-controller restart testing still await acceptance checks.
 Contact URI import/export, discovery schedules and additional map layers remain
@@ -40,7 +45,7 @@ deferred pending an authorization design.
 See [Project status and handover](PROJECT_STATUS.md) for completed features,
 acceptance steps, prioritized pipeline and agent resumption instructions. The
 version-specific sections below include historical deployment details; the current
-deployed version is 0.6.0, not the older map releases.
+deployed version is 0.6.1, not the older map releases.
 
 ## Map Sorting And Height (0.5.3)
 

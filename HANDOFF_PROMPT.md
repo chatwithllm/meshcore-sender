@@ -1,7 +1,7 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
-- Staged, not deployed: numbered range-target menus in `remote_commands.py`,
+- Deployed 0.6.1 (`6bb5dcd`): numbered range-target menus in `remote_commands.py`,
   wired to favorite contacts/channels in `workspace.py`. 83 Python tests pass.
   Send `range test`/`targets`/`help`, choose `1`, `1,2`, or `1 every 60s`, then
   separately confirm the full proposal with `1`. Paging: next/back, 150-byte
@@ -9,14 +9,18 @@ START HERE
   invalidation. Explicit names and AI fallback remain available. Menu scope
   defaults to favorites while the user's scope question is outstanding; this
   is not a separate target-authorization policy. No new controllers were added.
-  Do not reload while the user's test is active. Version bump/publish/deploy and
-  live menu acceptance remain pending; current changes are local/uncommitted.
+  User stopped the test before deployment. HA backup `2fa9ba3d`, HACS install,
+  config check and restart completed. Verified 142 contacts/channels, range
+  stopped, remote enabled, two controllers, three favorites, Google agent,
+  zero pending, module URL v=0.6.1. Live handset menu acceptance remains pending.
+  Initial three-minute verifier expired during startup; subsequent live checks
+  verified recovery and HACS revision. No second restart was performed.
 - Read `PROJECT_STATUS.md` for the authoritative completed / awaiting-validation /
   pipeline summary and the next acceptance test. Updated 2026-10-06.
 - Current HA code and the BLE whole-frame firmware fix are deployed; no
   coding/build/deployment process is still running. Latest live check: remote
-  control enabled, two approved controllers, range now running for OptimusPrime
-  every 30s (Remote: OptimusPrime, initial 1 sent / 1 ACK). Do not restart/reload.
+  control enabled, two approved controllers, range stopped after the user's
+  successful OptimusPrime 30s test (Remote: OptimusPrime, initial 1 sent / 1 ACK).
 - User's opened handset messages contained literal `Start O`; the earlier
   preview-clipping explanation was wrong. Old bridge revision split commands
   into 20-byte GATT writes, leaving only seven text bytes after the direct header.
@@ -37,7 +41,7 @@ START HERE
   below for implementation context. Older release/Mac notes are historical and
   must not be mistaken for active tasks or current runtime state.
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
+HOME ASSISTANT REMOTE/AI CHECKPOINT (0.6.0; MENU UPDATE ABOVE IS CURRENT)
 - Native remote commands now live in `remote_commands.py`, with HA credential
   reuse and tool-free agent eligibility in `ai_agent.py`. `workspace.py` attaches
   a per-entry remote Store before the radio starts fetching messages. Defaults
