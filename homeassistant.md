@@ -50,13 +50,17 @@ workspace snapshot succeeds. Live browser checks opened Inbox and Range at
 390px and 1366px with HA's actual menu/icons and no MeshCore page errors.
 Thirty-five Python checks and browser fixture checks at four widths pass.
 
-The radio was unavailable before deployment and still fails the companion
-handshake afterward. The entry remains loaded and the offline workspace is
-accessible (currently zero saved messages/contacts; no automatic Mac migration).
-No live messages or range tests were sent during verification. Restore the Heltec's
-connection to the bridge before validating incoming conversations and real sends.
-The bridge remains visible to HA; no firmware, PIN or bond changes were made for
-this workspace deployment. Next deliberate live test: send a new message from
+The radio was unavailable before and immediately after workspace deployment.
+The entry remained loaded and the offline workspace was accessible. The user then
+changed the radio PIN and saved the matching `meshcore_radio_pin` in ESPHome
+Secrets. Rebuilding and installing **only ble-proxy-c3** (job `eeb004f5d8fa`)
+resolved the connection: the authenticated HA workspace now reports the radio
+available with **96 contacts/channels**, zero new saved messages and no running
+range test. No pairing reset was needed; the PIN was not read, displayed or
+committed. Apollo and other Bluetooth devices were unchanged.
+
+No live messages or range tests were sent during verification. There is no
+automatic Mac history migration. Next deliberate live test: send a new message from
 OptimusPrime, confirm the inbox/name, reply, then run/stop a 30-second test and
 verify starter attribution, successive transmissions and ACK counts.
 

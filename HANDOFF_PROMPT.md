@@ -25,13 +25,14 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.4.0)
   backup `0bbd3a85`, core check and restart. Sidebar/API/module and actual HA
   browser checks at 390/1366px succeed. 35 Python checks and four-width browser
   fixtures pass. User-facing link: https://homeassistant.npalakurla.net/meshcore.
-- Radio handshake still fails, as it did before this deployment. The workspace
-  remains reachable offline with zero new saved messages/contacts. Do not claim
-  real messaging is verified: next test is a new OptimusPrime incoming message,
-  reply, then Start/Stop with 30-second interval and starter/ACK checks.
-- No live transmissions, pairing resets, PIN edits or firmware changes were made
-  for the workspace deployment. Confirm Heltec is powered near the bridge and
-  other apps have released its Bluetooth connection before further diagnosis.
+- Radio reconnection is now verified after the user changed the radio PIN and
+  saved `meshcore_radio_pin` in ESPHome Secrets. Only ble-proxy-c3 was rebuilt
+  and installed (job eeb004f5d8fa); HA reports available with 96 contacts/channels,
+  zero new saved messages and range stopped. No pairing reset was needed.
+- The PIN was not read, printed or committed. Apollo and other devices were
+  unchanged. No live transmissions were sent: next deliberate test is a new
+  OptimusPrime incoming message, reply, then Start/Stop at 30 seconds with
+  starter attribution and successive transmission/ACK checks.
 
 You are taking over a working project mid-stream. Read this whole brief, then the
 handoff doc, then the code — in that order.
