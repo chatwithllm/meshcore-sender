@@ -4,11 +4,16 @@
     "step": {
       "user": {
         "title": "Connect to MeshCore",
-        "menu_options": {"bluetooth": "Radio through Home Assistant Bluetooth", "server": "Existing MeshCore server"}
+        "menu_options": {"bridge": "Radio through a PIN-capable BLE bridge", "bluetooth": "Radio through Home Assistant Bluetooth", "server": "Existing MeshCore server"}
+      },
+      "bridge": {
+        "title": "Connect the BLE bridge",
+        "description": "The ESPHome bridge must already be paired with the radio using its Bluetooth PIN. Use the bridge's LAN hostname or IP. This connection is unencrypted and must stay on a trusted LAN.",
+        "data": {"host": "Bridge hostname or IP", "port": "Bridge port"}
       },
       "bluetooth": {
         "title": "Connect a radio through Bluetooth",
-        "description": "Use a local adapter or Bluetooth proxy. Close other apps holding the radio. Nearby radios: {discovered}",
+        "description": "Use a local adapter or Bluetooth proxy. PIN-protected radios may require a PIN-capable BLE bridge instead. Close other apps holding the radio. Nearby UART devices (not yet verified as MeshCore): {discovered}",
         "data": {"address": "Radio Bluetooth MAC address"}
       },
       "server": {
@@ -23,7 +28,9 @@
     },
     "error": {
       "invalid_address": "Enter a Bluetooth MAC address, such as AA:BB:CC:DD:EE:FF.",
-      "cannot_connect_bluetooth": "Radio connection failed. Power on the radio near a proxy and close other connected apps.",
+      "invalid_host": "Enter only the bridge's hostname or IP, not a URL.",
+      "cannot_connect_bridge": "The bridge did not complete the MeshCore handshake. Check its LAN address, port, BLE pairing and radio connection.",
+      "cannot_connect_bluetooth": "The MeshCore handshake failed. Check radio availability and Bluetooth authentication. PIN-protected radios may need a PIN-capable BLE bridge; ordinary proxy pairing may not be sufficient.",
       "invalid_url": "Enter an HTTP or HTTPS server URL without a path or credentials.",
       "invalid_auth": "Check the server passphrase and complete server setup first.",
       "cannot_connect": "Unable to connect to MeshCore Sender. Check the URL and that the App is running."

@@ -7,5 +7,7 @@ CONF_URL = "url"
 CONF_PASSPHRASE = "passphrase"
 CONF_CONNECTION = "connection"
 CONF_ADDRESS = "address"
+CONF_HOST = "host"
+CONF_PORT = "port"
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT,
              Platform.NUMBER, Platform.BUTTON]

@@ -8,14 +8,20 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import MeshCoreClient, MeshCoreError
-from .const import CONF_ADDRESS, CONF_CONNECTION, CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS
+from .const import (CONF_ADDRESS, CONF_CONNECTION, CONF_HOST, CONF_PORT,
+                    CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS)
 from .coordinator import MeshCoreCoordinator
 
 
 async def async_setup_entry(hass, entry):
-    if entry.data.get(CONF_CONNECTION) == "bluetooth":
+    connection = entry.data.get(CONF_CONNECTION)
+    if connection in ("bluetooth", "bridge"):
         from .bluetooth_client import NativeMeshCoreClient
-        client = NativeMeshCoreClient(hass, entry.data[CONF_ADDRESS])
+        if connection == "bridge":
+            host, port = entry.data[CONF_HOST], entry.data[CONF_PORT]
+            client = NativeMeshCoreClient(hass, f"{host}:{port}", host=host, port=port)
+        else:
+            client = NativeMeshCoreClient(hass, entry.data[CONF_ADDRESS])
     else:
         client = MeshCoreClient(async_get_clientsession(hass), entry.data[CONF_URL],
                                entry.data[CONF_PASSPHRASE])

@@ -7,6 +7,7 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 from homeassistant.components import bluetooth
 from meshcore import EventType, MeshCore
 from meshcore.ble_cx import BLEConnection, UART_RX_CHAR_UUID, UART_SERVICE_UUID, UART_TX_CHAR_UUID
+from meshcore.tcp_cx import TCPConnection
 
 from .api import MeshCoreError
 from .range_test import NativeRangeTest
@@ -47,9 +48,11 @@ class ProxyBLEConnection(BLEConnection):
 
 
 class NativeMeshCoreClient:
-    def __init__(self, hass, address):
+    def __init__(self, hass, address, *, host=None, port=5000):
         self.hass = hass
         self.address = address
+        self.host = host
+        self.port = port
         self.url = None
         self.mc = None
         self.channels = []
@@ -66,9 +69,11 @@ class NativeMeshCoreClient:
         if self.mc is not None:
             await self.mc.disconnect()
             self.mc = None
-        mc = MeshCore(ProxyBLEConnection(self.hass, self.address), default_timeout=15)
+        transport = (TCPConnection(self.host, self.port) if self.host else
+                     ProxyBLEConnection(self.hass, self.address))
+        mc = MeshCore(transport, default_timeout=15)
         try:
-            event = await mc.connect()
+            event = await asyncio.wait_for(mc.connect(), timeout=30)
             if event is None or event.type == EventType.ERROR:
                 raise MeshCoreError("Radio did not respond to the companion handshake")
             await mc.ensure_contacts()
@@ -156,11 +161,11 @@ class NativeMeshCoreClient:
                     raise MeshCoreError("Message must contain 1 to 150 UTF-8 bytes")
                 results = [await self.send_one(target, text) for target in targets]
                 return {"ok": all(item["ok"] for item in results), "results": results}
-            raise MeshCoreError("Unsupported native Bluetooth action")
+            raise MeshCoreError("Unsupported native radio action")
         except MeshCoreError:
             raise
         except Exception as error:
-            raise MeshCoreError(str(error) or "Bluetooth connection failed") from error
+            raise MeshCoreError(str(error) or "Radio connection failed") from error
 
     async def close(self):
         await self.range.stop()

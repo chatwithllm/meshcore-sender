@@ -1,0 +1,30 @@
+# Package for a dedicated ESPHome BLE bridge; retain the device's Wi-Fi/API/OTA.
+# Remove bluetooth_proxy from the device configuration before including this.
+external_components:
+  - source:
+      type: git
+      url: https://github.com/matthew73210/meshcore-ble-bridge
+      ref: c1c9b48f5a96b23f75d0a6c192c1acd3cc2e517e
+    components: [meshcore_ble_bridge]
+
+esp32_ble:
+  io_capability: keyboard_only
+
+esp32_ble_tracker:
+
+ble_client:
+  - mac_address: !secret meshcore_radio_mac
+    id: meshcore_ble
+    auto_connect: true
+    on_passkey_request:
+      then:
+        - ble_client.passkey_reply:
+            id: meshcore_ble
+            passkey: !secret meshcore_radio_pin
+
+meshcore_ble_bridge:
+  id: meshcore_bridge
+  ble_client_id: meshcore_ble
+  port: 5000
+  force_encryption: true
+  wait_for_auth: true

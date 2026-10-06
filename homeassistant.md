@@ -1,5 +1,35 @@
 # Home Assistant
 
+## PIN-capable BLE bridge mode (0.3.0)
+
+For a PIN-protected radio that rejects standard proxy UART writes, use a dedicated
+ESPHome `ble_client` connection with `io_capability: keyboard_only` and a passkey
+reply. The authenticated BLE session is exposed to HA through a TCP bridge on the
+trusted LAN. This does not require a phone, Mac, or weakening radio security.
+
+The package template is `meshcore_homeassistant/ble_bridge_package.yaml`. It pins
+[meshcore-ble-bridge](https://github.com/matthew73210/meshcore-ble-bridge) v0.1.0's
+source commit. Retain the ESPHome device's board, Wi-Fi, API encryption and OTA
+settings, remove its `bluetooth_proxy` component, and merge the package. Set
+`meshcore_radio_mac` and `meshcore_radio_pin` in ESPHome secrets. Do not expose
+secrets in logs or commit the live device configuration.
+
+Compile before flashing. After the device reports BLE authentication and a ready
+TCP listener, choose **Radio through a PIN-capable BLE bridge** in MeshCore Sender.
+Use the ESPHome device's LAN hostname/IP and port 5000. Setup verifies the actual
+MeshCore handshake and loads contact/channel names. The existing range controls,
+statistics and incoming-message events apply in bridge mode too.
+
+The bridge TCP endpoint has no authentication or encryption. Restrict it to a
+trusted LAN; never forward its port to the internet. The bridge is an experimental
+third-party component, currently seeking a maintainer. Live compatibility must be
+verified before treating it as an unattended service.
+
+User approved converting ble-proxy-c3 and confirmed the default radio PIN. The
+Apollo kitchen sensor is not changed. Before edits, Supervisor created and verified
+an ESPHome backup, slug `7c8c8ebd`. Bridge configuration is saved on HA; firmware
+compilation/deployment and the authenticated handshake are still pending.
+
 ## Direct Bluetooth mode (0.2.0)
 
 The HACS integration can now connect directly through Home Assistant's local
