@@ -37,6 +37,8 @@ class ProxyBLEConnection(BLEConnection):
             self.rx_char = service.get_characteristic(UART_RX_CHAR_UUID)
             if self.rx_char is None:
                 raise MeshCoreError("Radio write characteristic is missing")
+            # MeshCore radios can require an encrypted link before UART writes.
+            await self.client.pair()
             await self.client.start_notify(UART_TX_CHAR_UUID, self.handle_rx)
         except BaseException:
             await self.client.disconnect()
