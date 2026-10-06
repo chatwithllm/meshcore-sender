@@ -15,7 +15,7 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.0)
   close survives polling, and mobile stacks map/list. Never infer node locations.
 - Read `homeassistant.md` first for the native HA migration. Current development
   is in `custom_components/meshcore_sender/`, not the Mac wrapper.
-- `/meshcore` sidebar panel: Inbox, Compose, Range and Contacts/favorites. The
+- `/meshcore` sidebar panel: Inbox, Compose, Range, Contacts/favorites and Map. The
   frontend module is `www/workspace.js`; authenticated admin-only WebSocket API
   and Store lifecycle are in `workspace.py`; bounded history in `history.py`.
 - Reuses `NativeMeshCoreClient` and its single radio connection. No new server,
@@ -23,7 +23,8 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.0)
 - Live host: HA OS 2026.9.3 at homeassistant.local:8123 (192.168.20.11).
   Native entry `01M47GQ1BN3ND5XGNKKG3V7C2B` connects through
   `ble-proxy-c3` / 192.168.100.189:5000 to Heltec V4 / MeshCore-MacMini.
-  Actual PIN is in ESPHome Secrets. Never print it or any API/token secrets.
+  ESPHome Secrets provide the initial PIN fallback. Runtime overrides persist
+  on the bridge after a key-dialog update. Never print PIN/API/token secrets.
 - HACS custom integration repository ID 1403528253; update from `main`, run
   Supervisor's core configuration check, then restart HA. Use the configured
   Codex HA header helper for authorized API access; do not hardcode tokens.
@@ -33,10 +34,15 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.0)
   discovery scans are still pending migration. Do not claim complete Mac parity.
 - Tests: Python unittest suite plus `tests/workspace_browser.cjs` (Playwright).
   Browser actions use fixtures and must not secretly send live radio messages.
-- Deployment completed: HACS installed `eb32027` / 0.4.0 after verified HA
-  backup `0bbd3a85`, core check and restart. Sidebar/API/module and actual HA
-  browser checks at 390/1366px succeed. 35 Python checks and four-width browser
-  fixtures pass. User-facing link: https://homeassistant.npalakurla.net/meshcore.
+- Deployment completed: HACS installed `49121ff` / 0.5.0 after verified HA
+  backup `d4e31a28`, core check and restart. Runtime PIN bridge firmware job
+  `3b6fc4175417` succeeded; ESPHome backup `28e8af89` is available. Radio is
+  connected with 98 contacts/channels and 70 GPS repeaters; range is stopped.
+  43 Python checks and four-width browser fixtures pass. Live 390/1366px checks
+  verified map tiles, list/marker selection, zoom, persistent popup close and
+  masked PIN dialog cancellation, with no MeshCore page errors or live sends.
+  Runtime PIN submission was fixture-tested, not tested by changing the live PIN.
+  User-facing link: https://homeassistant.npalakurla.net/meshcore.
 - Radio reconnection is now verified after the user changed the radio PIN and
   saved `meshcore_radio_pin` in ESPHome Secrets. Only ble-proxy-c3 was rebuilt
   and installed (job eeb004f5d8fa); HA reports available with 96 contacts/channels,

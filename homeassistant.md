@@ -34,7 +34,22 @@ are not echoed. Avoid enabling verbose API/protocol debugging when submitting
 credentials. ESP32 preference storage is not a hardware vault; physical access
 to an unencrypted device can expose stored secrets.
 
-Verification/deployment results for this version are recorded after installation.
+Deployed and verified on 2026-10-05: HACS installed revision `49121ff` (0.5.0)
+after verified HA backup `d4e31a28`, a successful core configuration check and
+restart. Only ble-proxy-c3 firmware was updated (successful job `3b6fc4175417`),
+with ESPHome backup `28e8af89`; Apollo and other devices were untouched.
+The authenticated workspace reports the radio connected, 98 contacts/channels,
+70 GPS repeaters and no running range test. The matching encrypted bridge
+advertises the runtime PIN action and the key dialog is available.
+
+All 43 Python tests pass, including PIN validation, leading zeros, encrypted
+bridge matching, active-test protection and sensitive-error redaction. Browser
+fixtures pass at 375/390/768/1366px. Live HA browser checks at 390/1366px verify
+rendered OSM tiles, list/marker selection, zoom 12, popup close surviving polling,
+no control overflow, and masked PIN dialog cancellation, with zero MeshCore page
+errors. No PIN was read or changed, and no live messages or range tests were sent.
+Actual submission of a newly changed radio PIN remains a deliberate user test;
+do not change the working radio PIN merely to test it.
 
 ## Native sidebar workspace (0.4.0)
 
