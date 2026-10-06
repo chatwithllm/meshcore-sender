@@ -5,33 +5,36 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
 
-- Prepared and being deployed: 0.6.3 battery-voltage monitoring. Native
+- Deployed and verified: 0.6.3 battery-voltage monitoring. Native
   bridge/BLE reads `get_bat()` / BATTERY `level` (millivolts) once per minute under
   the existing transport lock; five-second timeout, invalid/stale handling, HA
   measurement sensor and workspace voltage/history control. No percent/current/
   runtime estimates. User confirmed two 18650 cells in parallel, directly powering
   the Heltec battery connection and charged by a solar charger (not USB). Test
-  stopped and user authorized deployment. Live ADC verification and HA deployment
-  remain pending until a subsequent verified checkpoint. Do not open a second
-  radio connection. 0.6.2 below remains live until deployment completes.
+  stopped and user authorized deployment. Fresh ADC samples **4.209 V**, HA
+  Recorder history and live WebKit voltage/history dialog at 375/1366 px verified.
+  Initial contact-fetch failure recovered automatically; some later ADC requests
+  briefly failed and correctly showed unavailable, then fresh readings resumed.
+  Observe link stability; do not open a second radio connection.
   Validation: 114 Python tests passed, workspace browser fixtures passed at
   375/390/768/1366 px (voltage, stale state and history event included), geography
   tests passed and `git diff --check` passed.
 - Active product: native Home Assistant integration and `/meshcore` sidebar.
-- HA integration version: **0.6.2**, HACS-installed code revision **`24937b9`**.
+- HA integration version: **0.6.3**, HACS-installed code revision **`388eccd`**.
   The later bridge transport fix below changes ESPHome firmware, not HA code;
   it does not require an HA restart.
-- Deployment: HACS install, verified HA backup **`f889edd7`**, configuration check,
+- Deployment: HACS install, verified HA backup **`f37ba470`**, configuration check,
   restart and radio reconnection completed. Registered frontend:
-  `/meshcore_sender_static/workspace.js?v=0.6.2`. Radio connection and exact saved
+  `/meshcore_sender_static/workspace.js?v=0.6.3`. Radio connection and exact saved
   controller/favorite/AI settings were verified after restart. Panel module URL
   is nested under `config._panel_custom` in get_panels.
 - Latest live check: **remote control enabled**, **two approved controllers**,
   **three favorites**, **MeshCore AI Google selected**, **range test stopped**,
   radio available with **142 contacts/channels**, **zero pending requests**.
-  Before this deployment, the user's command and `1` confirmation successfully
-  started a 30-second OptimusPrime test with remote attribution and ACKs; the user
-  stopped it before deployment. No agent-issued menu/test transmissions were sent.
+  Battery entity: `sensor.meshcore_sender_battery_voltage`, volts/measurement.
+  The latest test was stopped by the user before deployment (151 attempts, zero
+  ACKs at preflight). Earlier remote-start/confirmation with ACKs was verified in
+  the 0.6.1 checkpoint. No agent-issued menu/test transmissions were sent.
   Recheck live settings before changing permissions or deploying.
 - Bridge firmware: pinned upstream **`db6bfdef4681294bf6439d0d001e8dfeb430b556`**,
   installed by ESPHome job **`e0a617fa16aa`**, exit 0, after ESPHome backup
@@ -52,6 +55,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 | Area | Delivered |
 | --- | --- |
 | Native radio | Heltec V4 through the PIN-capable ESPHome BLE bridge; one HA-owned radio connection, no Mac login dependency. |
+| Battery monitoring | 0.6.3: shared radio ADC voltage every minute, freshness/unavailable handling, HA measurement sensor/history, workspace voltage and history control; 4.209 V live verified. No guessed percentage, current or runtime. |
 | Inbox | Persistent incoming/outgoing conversations, replies, name resolution when a matching contact exists, delivery states and replay deduplication. |
 | Compose and contacts | Multiple recipients, actual radio channel names, search/type filters, name sorting and persisted favorites. |
 | Range tests | Multiple targets, 5-300-second interval, prefix, starter attribution, countdown, per-target sent/ACK/broadcast statistics and log. |

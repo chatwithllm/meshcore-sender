@@ -27,11 +27,15 @@ The user confirmed two parallel 18650 cells directly powering the battery
 connector, charged by a solar charger (not USB). The reading is their shared
 voltage, not separate readings of each cell.
 
-Do not deploy/reload while a range test is active. After deployment verify a plausible fresh voltage, its
-history dialog, mobile layout and continued range/remote behavior. No live battery
-reading has yet been checked at this release checkpoint; see PROJECT_STATUS.md
-for subsequent deployment/live verification. The agent did not open a second
-radio connection.
+Deployed HACS revision `388eccd` after verified HA backup `f37ba470`, configuration
+check and restart. Live 4.209 V readings, Recorder history and the WebKit battery
+history dialog at 375/1366 px verified; 114 Python tests and four-width Chromium
+fixtures pass. Some post-startup reads briefly failed, showed unavailable and
+later recovered automatically; observe connection stability. Saved controllers,
+favorites and AI selection were preserved. Refresh `/meshcore` to load v=0.6.3.
+
+Do not deploy/reload while a range test is active. The agent did not open a second
+radio connection or send/start/stop any LoRa tests during battery deployment.
 
 ## Range Stop Summaries (0.6.2)
 
@@ -61,7 +65,7 @@ stopped, module URL v=0.6.2 and exact controller/favorite/AI retention. No
 agent-issued range start/stop or test transmission was performed. Live radio
 summary receipt still requires user acceptance for both HA and LoRa stops.
 
-## Current Status (0.6.2)
+## Current Status (0.6.3)
 
 ### Numbered target menus (0.6.1)
 
@@ -106,7 +110,7 @@ deferred pending an authorization design.
 See [Project status and handover](PROJECT_STATUS.md) for completed features,
 acceptance steps, prioritized pipeline and agent resumption instructions. The
 version-specific sections below include historical deployment details; the current
-deployed version is 0.6.2, not the older map releases.
+deployed version is 0.6.3, not the older map releases.
 
 ## Map Sorting And Height (0.5.3)
 
