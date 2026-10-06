@@ -21,8 +21,17 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.4.0)
   discovery scans are still pending migration. Do not claim complete Mac parity.
 - Tests: Python unittest suite plus `tests/workspace_browser.cjs` (Playwright).
   Browser actions use fixtures and must not secretly send live radio messages.
-- The radio was already unavailable during pre-deployment checks. Verify its
-  status after deployment and distinguish workspace readiness from BLE availability.
+- Deployment completed: HACS installed `eb32027` / 0.4.0 after verified HA
+  backup `0bbd3a85`, core check and restart. Sidebar/API/module and actual HA
+  browser checks at 390/1366px succeed. 35 Python checks and four-width browser
+  fixtures pass. User-facing link: https://homeassistant.npalakurla.net/meshcore.
+- Radio handshake still fails, as it did before this deployment. The workspace
+  remains reachable offline with zero new saved messages/contacts. Do not claim
+  real messaging is verified: next test is a new OptimusPrime incoming message,
+  reply, then Start/Stop with 30-second interval and starter/ACK checks.
+- No live transmissions, pairing resets, PIN edits or firmware changes were made
+  for the workspace deployment. Confirm Heltec is powered near the bridge and
+  other apps have released its Bluetooth connection before further diagnosis.
 
 You are taking over a working project mid-stream. Read this whole brief, then the
 handoff doc, then the code — in that order.

@@ -42,7 +42,23 @@ read-only snapshots and offline history access. `tests/workspace_browser.cjs` ch
 375/390/768/1366px layouts, escaped received content, draft preservation, target
 selection and interval-controlled Start/Stop using fixture actions only. Run it
 with an installed Playwright package (or `PLAYWRIGHT_MODULE` set to its path).
-Deployment and live-radio results are recorded below after installation.
+Deployment verified on 2026-10-05: Supervisor HA backup `0bbd3a85` was created
+and checked. HACS installed revision `eb32027` (0.4.0), the core configuration
+check passed and HA restarted. Live `get_panels` reports `/meshcore` visible in
+the sidebar and admin-only; the module returns HTTP 200 and the authenticated
+workspace snapshot succeeds. Live browser checks opened Inbox and Range at
+390px and 1366px with HA's actual menu/icons and no MeshCore page errors.
+Thirty-five Python checks and browser fixture checks at four widths pass.
+
+The radio was unavailable before deployment and still fails the companion
+handshake afterward. The entry remains loaded and the offline workspace is
+accessible (currently zero saved messages/contacts; no automatic Mac migration).
+No live messages or range tests were sent during verification. Restore the Heltec's
+connection to the bridge before validating incoming conversations and real sends.
+The bridge remains visible to HA; no firmware, PIN or bond changes were made for
+this workspace deployment. Next deliberate live test: send a new message from
+OptimusPrime, confirm the inbox/name, reply, then run/stop a 30-second test and
+verify starter attribution, successive transmissions and ACK counts.
 
 ## PIN-capable BLE bridge mode (0.3.0)
 
