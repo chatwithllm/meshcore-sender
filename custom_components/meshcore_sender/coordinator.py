@@ -43,11 +43,11 @@ class MeshCoreCoordinator(DataUpdateCoordinator):
         await self.async_request_refresh()
         return result
 
-    async def start(self, targets=None, interval=None, prefix="ping"):
+    async def start(self, targets=None, interval=None, prefix="ping", started_by="Home Assistant"):
         targets = targets or [self.setting("target")]
         if not targets or not all(targets):
             raise MeshCoreError("Choose a range test target first")
         return await self.action("/api/range/start", {
             "targets": targets, "interval": interval or self.setting("interval", 30),
-            "prefix": prefix, "started_by": "Home Assistant",
+            "prefix": prefix, "started_by": started_by, "started_via": "HA",
         })

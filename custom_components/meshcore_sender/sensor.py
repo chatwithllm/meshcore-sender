@@ -47,4 +47,6 @@ class MeshCoreSensor(MeshCoreEntity, SensorEntity):
             if target.startswith("chan:"):
                 stats[target]["broadcasts_sent"] = item.get("broadcasts_sent", item.get("acked", 0))
         return {"targets": test.get("targets", []), "per_target": stats,
-                "next_due_at": test.get("next_due_at"), "started_by": test.get("started_by")}
+                "next_due_at": test.get("next_due_at"), "started_by": test.get("started_by"),
+                "started_via": test.get("started_via"), "stopped_by": test.get("stopped_by"),
+                "stopped_via": test.get("stopped_via"), "summary_messages": test.get("summary_messages", [])}

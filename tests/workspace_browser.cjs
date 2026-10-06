@@ -34,7 +34,9 @@ const path = require('node:path');
         if(msg.action==='start') state.range={...state.range,running:true,targets:msg.targets,interval:msg.interval,
           started_by:'Fixture user', next_due_at:now+msg.interval,sent:3,acked:2,
           per_target:{'dm:OptimusPrime':{sent:3,acked:2}},log:[]};
-        if(msg.action==='stop') state.range.running=false;
+        if(msg.action==='stop') state.range={...state.range,running:false,stopped_by:'Fixture user',stopped_via:'HA',
+          summary_messages:['Range test stopped. Start: Fixture user (HA). Stop: Fixture user (HA).',
+            'Attempts 3; DM ACK 2/3; channel TX 0 (no delivery ACK).'],summary_delivery:[{target:'dm:OptimusPrime',ok:true,acked:true}]};
         if(msg.action==='favorite') state.favorites=msg.enabled?msg.targets:[];
         if(msg.action==='remote_settings') state.remote={...state.remote,enabled:msg.enabled,
           controllers:msg.controllers.map(key=>({key,name:'OptimusPrime'})),agent_id:msg.agent_id};
@@ -62,6 +64,9 @@ const path = require('node:path');
     assert.deepEqual(call.targets,['dm:OptimusPrime']); assert.equal(call.interval,60);
     await page.screenshot({path:`/tmp/meshcore-workspace-range-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Stop',exact:true}).click();
+    assert.ok((await page.locator('[aria-label="Final test summary"]').textContent()).includes('DM ACK 2/3'));
+    assert.ok((await page.locator('[aria-label="Final test summary"]').textContent()).includes('Stop: Fixture user (HA)'));
+    await page.screenshot({path:`/tmp/meshcore-workspace-summary-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Compose',exact:true}).click();
     await page.locator('#compose').fill('Hello');
     await page.locator('#search').fill('family');

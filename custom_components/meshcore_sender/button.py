@@ -24,9 +24,12 @@ class MeshCoreButton(MeshCoreEntity, ButtonEntity):
 
     async def async_press(self):
         try:
+            user_id = self._context.user_id if self._context else None
+            user = await self.hass.auth.async_get_user(user_id) if user_id else None
+            actor = user.name if user and user.name else "Home Assistant"
             if self.key == "start":
-                await self.coordinator.start()
+                await self.coordinator.start(started_by=actor)
             else:
-                await self.coordinator.action("/api/range/stop")
+                await self.coordinator.action("/api/range/stop", {"stopped_by": actor, "stopped_via": "HA"})
         except MeshCoreError as error:
             raise HomeAssistantError(str(error)) from error

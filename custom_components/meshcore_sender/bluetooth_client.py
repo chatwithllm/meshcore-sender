@@ -59,7 +59,21 @@ class NativeMeshCoreClient:
         self.channels = []
         self.lock = asyncio.Lock()
         self.last_message = None
-        self.range = NativeRangeTest(self.send_one, self._create_task)
+        self.range = NativeRangeTest(self.send_one, self._create_task, self._send_range_summary)
+
+    async def _send_range_summary(self, summary, exclude):
+        deliveries = []
+        for target in summary["targets"]:
+            if target == exclude:
+                continue
+            for text in summary["summary_messages"]:
+                try:
+                    result = await self.send_one(target, text, timeout=10)
+                    deliveries.append({"target": target, "ok": bool(result.get("ok")),
+                                       "acked": bool(result.get("acked"))})
+                except Exception:
+                    deliveries.append({"target": target, "ok": False, "acked": False})
+        return deliveries
 
     def _create_task(self, coro):
         return self.hass.async_create_background_task(coro, "MeshCore range test")
@@ -209,7 +223,8 @@ class NativeMeshCoreClient:
             if path == "/api/range/status":
                 return self.range.snapshot()
             if path == "/api/range/stop":
-                return await self.range.stop()
+                return await self.range.stop(payload.get("stopped_by", "Home Assistant"),
+                    payload.get("stopped_via", "HA"), notify=True, exclude=payload.get("summary_exclude"))
             async with self.lock:
                 await self._ensure_connected()
                 nodes = self._nodes()
@@ -223,7 +238,7 @@ class NativeMeshCoreClient:
                 raise MeshCoreError("Choose available contacts or channels")
             if path == "/api/range/start":
                 return self.range.start(targets, payload.get("interval", 30), payload.get("prefix", "ping"),
-                                        payload.get("started_by", "Home Assistant"))
+                                        payload.get("started_by", "Home Assistant"), payload.get("started_via", "HA"))
             if path == "/api/send":
                 text = payload.get("text", "").strip()
                 if not text or len(text.encode()) > 150:

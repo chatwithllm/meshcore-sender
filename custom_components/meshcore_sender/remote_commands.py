@@ -128,10 +128,13 @@ class RemoteCommands:
         if not self.allowed(key):
             return
         # Names may change; resolve the saved public key at transmission time.
-        result = await self.send(key, text)
-        if isinstance(result, dict) and not result.get("ok", True):
-            raise ValueError("Reply was not delivered")
-        self.record(name, text)
+        for packet in text if isinstance(text, list) else [text]:
+            if not self.allowed(key):
+                return
+            result = await self.send(key, packet)
+            if isinstance(result, dict) and not result.get("ok", True):
+                raise ValueError("Reply was not delivered")
+            self.record(name, packet)
 
     @staticmethod
     def menu_label(text, limit=45):

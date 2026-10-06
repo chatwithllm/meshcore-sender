@@ -51,6 +51,11 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.coordinator.action.assert_awaited_once_with("/api/range/start", {
             "targets": ["dm:OptimusPrime"], "interval": 60, "prefix": "ping", "started_by": "Test operator"})
 
+    async def test_stop_records_authenticated_user_and_ha_source(self):
+        await self.call("stop")
+        self.coordinator.action.assert_awaited_once_with("/api/range/stop", {
+            "stopped_by": "Test operator", "stopped_via": "HA"})
+
     async def test_unknown_entry_cannot_control_another_radio(self):
         await self.call("stop", entry_id="unknown")
         self.coordinator.action.assert_not_awaited()

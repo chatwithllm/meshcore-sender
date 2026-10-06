@@ -1,6 +1,14 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- 0.6.2 is implemented locally, pending deployment: final range-stop summaries
+  with start/stop actor+HA/LoRa source, attempts, direct ACKs and channel TX
+  (explicitly no channel delivery ACK). Notify tested targets; LoRa stopper's
+  command reply supplies its summary without a duplicate target notification.
+  HA retains the summary/failures in Range; transmitted packets persist in inbox.
+  Idle/concurrent stops don't resend, cancellation isn't a stop, shutdown sends
+  no broadcasts, and summaries don't increase test counts. 99 Python checks
+  pass; browser fixtures include the final summary. Read homeassistant.md.
 - Deployed 0.6.1 (`6bb5dcd`): numbered range-target menus in `remote_commands.py`,
   wired to favorite contacts/channels in `workspace.py`. 83 Python tests pass.
   Send `range test`/`targets`/`help`, choose `1`, `1,2`, or `1 every 60s`, then

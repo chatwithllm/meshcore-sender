@@ -63,11 +63,14 @@ async def async_setup_entry(hass, entry):
         if chosen is None:
             raise HomeAssistantError("Choose a valid MeshCore config entry")
         try:
+            user_id = call.context.user_id if call.context else None
+            user = await hass.auth.async_get_user(user_id) if user_id else None
+            actor = user.name if user and user.name else "Home Assistant automation"
             if call.service == "start_range_test":
                 await chosen.start(call.data["targets"], call.data["interval"],
-                                   call.data["prefix"])
+                                   call.data["prefix"], started_by=actor)
             elif call.service == "stop_range_test":
-                await chosen.action("/api/range/stop")
+                await chosen.action("/api/range/stop", {"stopped_by": actor, "stopped_via": "HA"})
             else:
                 result = await chosen.action("/api/send", {
                     "targets": call.data["targets"], "text": call.data["message"],

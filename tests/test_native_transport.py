@@ -55,6 +55,33 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         await client.close()
         self.radio.disconnect.assert_awaited_once()
 
+    async def test_remote_stop_excludes_controller_duplicate_and_keeps_summary_out_of_counts(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        client.send_one = AsyncMock(return_value={"ok": True, "acked": False})
+        client.range.state.update(running=True, targets=["dm:OptimusPrime", "chan:1"],
+            started_by="Remote: OptimusPrime", started_via="LoRa", sent=4, acked=2)
+        result = await client.request("POST", "/api/range/stop", {
+            "stopped_by": "OptimusPrime", "stopped_via": "LoRa", "summary_exclude": "dm:OptimusPrime"})
+        self.assertTrue(result["was_running"])
+        self.assertIn("Stop: OptimusPrime (LoRa)", "\n".join(result["summary_messages"]))
+        self.assertTrue(all(call.args[0] == "chan:1" for call in client.send_one.call_args_list))
+        self.assertEqual(client.range.state["sent"], 4)
+        self.assertEqual(client.range.state["acked"], 2)
+        count = client.send_one.await_count
+        await client.request("POST", "/api/range/stop")
+        self.assertEqual(client.send_one.await_count, count)
+
+    async def test_ha_summary_attempts_all_targets_even_if_one_is_unavailable(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        async def send(target, text, timeout):
+            if target == "dm:Missing": raise ConnectionError()
+            return {"ok": True, "acked": True}
+        client.send_one = AsyncMock(side_effect=send)
+        deliveries = await client._send_range_summary({"targets": ["dm:Missing", "dm:OptimusPrime"],
+            "summary_messages": ["Range test stopped."]}, None)
+        self.assertFalse(deliveries[0]["ok"])
+        self.assertTrue(deliveries[1]["acked"])
+
     async def test_direct_mode_still_uses_ble(self):
         client = self.Client(self.hass, "AA:BB:CC:DD:EE:FF")
         await client._ensure_connected()

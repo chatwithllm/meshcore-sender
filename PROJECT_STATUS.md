@@ -60,6 +60,17 @@ range test. AI cannot access household-control tools through the MeshCore adapte
 
 ## In Progress / Awaiting Validation
 
+- **0.6.2 stop summaries: implemented, deployment pending.** Explicit HA/LoRa
+  stops capture starter/stopper and sources, attempts, direct ACKs and channel
+  broadcasts without claiming channel delivery. Summary goes to tested targets;
+  a remote stopper receives it once as the command reply. HA shows the final
+  summary/notification failures. Packets obey the 150-byte UTF-8 limit; repeated
+  stops do not resend. In-flight cancellation is unconfirmed, summary messages
+  do not count as pings, and shutdown/unload does not send notifications. Tests:
+  99 Python checks; four-width browser summary fixture validation. Deployment
+  must verify stopped/not-finishing state, backup/config check, restart/reconnect
+  and controller/favorite retention. No live stop-summary test has been sent.
+
 No coding work is currently in flight. These items need user participation or a
 deliberate follow-up, and must not be described as verified end to end:
 

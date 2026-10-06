@@ -1,5 +1,29 @@
 # Home Assistant
 
+## Range Stop Summaries (0.6.2, Awaiting Deployment)
+
+Explicit stops from a LoRa controller or HA sidebar/button/service produce a
+final summary: starter and origin (HA/LoRa), stopper and origin, total transmission
+attempts, direct-message ACKs/attempts and successful channel broadcasts. Channels
+remain labelled no delivery ACK; a cancelled in-flight ping is unconfirmed. The
+summary is sent to each tested target/channel and displayed in Range. For LoRa
+stops, the requesting controller receives it as the command reply and is excluded
+from duplicate target notifications. Long summaries use UTF-8-safe packets of at
+most 150 bytes. Summary packets do not increase range counters.
+
+The first explicit stop owns the result; repeated or concurrent stops do not
+resend it or overwrite its actor. A new test clears the old summary and cannot
+start while final notifications are finishing. Failed notifications do not undo
+the stop, and HA retains their delivery results. Shutdown/unload does not broadcast
+summaries; the in-memory Range result resets on restart, while transmitted summary
+messages remain in the persistent inbox history. A cancelled or expired remote
+stop proposal does not stop or summarize anything.
+
+99 Python tests pass, including service/button actor attribution, mixed channel
+and DM counts, interrupted sends, simultaneous stops, notification failure and
+controller deduplication. Browser fixtures cover the final summary at four widths.
+Live radio stop-summary receipt still requires user acceptance after deployment.
+
 ## Current Status (0.6.1)
 
 ### Numbered target menus (0.6.1)

@@ -53,8 +53,11 @@ async def async_attach_remote(hass, entry, coordinator):
         if proposal["action"] == "start" and client.range.snapshot()["running"]:
             return "A test is already running. Stop it before starting another."
         path = "/api/range/start" if proposal["action"] == "start" else "/api/range/stop"
-        await coordinator.action(path, {**proposal, "started_by": "Remote: " + name})
-        return "Range test started." if proposal["action"] == "start" else "Range test stopped."
+        result = await coordinator.action(path, {**proposal, "started_by": "Remote: " + name,
+            "started_via": "LoRa", "stopped_by": name, "stopped_via": "LoRa",
+            "summary_exclude": "dm:" + name})
+        return ("Range test started." if proposal["action"] == "start" else
+                result.get("summary_messages") or "Range test already stopped.")
 
     client.remote = RemoteCommands(client._nodes, send, execute,
         lambda agent, text, nodes: interpret(hass, agent, text, nodes), await store.async_load(),
@@ -102,7 +105,8 @@ async def websocket_workspace(hass, connection, msg):
             chosen.save_setting("workspace_targets", msg["targets"])
             chosen.save_setting("workspace_prefix", msg["prefix"])
         elif action == "stop":
-            await chosen.action("/api/range/stop")
+            await chosen.action("/api/range/stop", {"stopped_by": connection.user.name or "Home Assistant",
+                                                    "stopped_via": "HA"})
         elif action == "favorite":
             targets = msg.get("targets", [])
             valid = {n["id"] for n in (chosen.data or {}).get("nodes", [])}
@@ -211,7 +215,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.6.1",
+            module_url="/meshcore_sender_static/workspace.js?v=0.6.2",
             require_admin=True,
         )
         state["panel"] = True

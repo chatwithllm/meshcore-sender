@@ -91,6 +91,14 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
         self.execute.assert_awaited_once_with({"action": "status"}, "OptimusPrime")
         self.ai.assert_not_awaited()
 
+    async def test_confirmed_stop_sends_summary_parts_as_reply(self):
+        self.execute.return_value = ["Range test stopped. Start: Alice (HA).", "Stop: OptimusPrime (LoRa). DM ACK 2/3."]
+        await self.handle("stop range test")
+        self.send.reset_mock()
+        await self.handle("1")
+        self.assertEqual(self.send.await_count, 2)
+        self.assertEqual(self.send.call_args.args[1], self.execute.return_value[1])
+
     async def test_multiple_targets_and_channel(self):
         await self.handle("range test OptimusPrime and Family every 1 min")
         proposal = self.engine.pending[self.key]["proposal"]
