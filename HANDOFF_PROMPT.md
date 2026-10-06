@@ -1,10 +1,36 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- Staged, not deployed: numbered range-target menus in `remote_commands.py`,
+  wired to favorite contacts/channels in `workspace.py`. 83 Python tests pass.
+  Send `range test`/`targets`/`help`, choose `1`, `1,2`, or `1 every 60s`, then
+  separately confirm the full proposal with `1`. Paging: next/back, 150-byte
+  UTF-8 packets, stable snapshot numbers, 2m expiry, permission/cancel/reset
+  invalidation. Explicit names and AI fallback remain available. Menu scope
+  defaults to favorites while the user's scope question is outstanding; this
+  is not a separate target-authorization policy. No new controllers were added.
+  Do not reload while the user's test is active. Version bump/publish/deploy and
+  live menu acceptance remain pending; current changes are local/uncommitted.
 - Read `PROJECT_STATUS.md` for the authoritative completed / awaiting-validation /
   pipeline summary and the next acceptance test. Updated 2026-10-06.
-- Current HA code is deployed; no coding/build/deployment process is still running.
-  Remote control remains disabled until the user explicitly selects a controller.
+- Current HA code and the BLE whole-frame firmware fix are deployed; no
+  coding/build/deployment process is still running. Latest live check: remote
+  control enabled, two approved controllers, range now running for OptimusPrime
+  every 30s (Remote: OptimusPrime, initial 1 sent / 1 ACK). Do not restart/reload.
+- User's opened handset messages contained literal `Start O`; the earlier
+  preview-clipping explanation was wrong. Old bridge revision split commands
+  into 20-byte GATT writes, leaving only seven text bytes after the direct header.
+  Updated to upstream `db6bfdef4681294bf6439d0d001e8dfeb430b556` with response
+  writes enabled. ESPHome backup `77f4c170`, firmware job `e0a617fa16aa`, exit 0;
+  settings/runtime PIN preserved, HA reconnected with 127 contacts/channels.
+  Run `tests/check_bridge_frames.py` for the compiled non-radio regression.
+  Post-flash correction: cached health looked connected but inbox was stale.
+  Reloading ONLY the native integration entry while range was stopped restored
+  a fresh handshake, queued reception and 142 contacts/channels. User's next
+  `Range test OptimusPrime Every 30s` and `1` then arrived live and started the
+  confirmed range test. No agent-issued start or test message was sent. Stop,
+  cancel and fuzzy AI acceptance tests remain; independently viewing the full
+  handset reply is still required before claiming its rendering was verified.
 - Google AI preview is verified. Codex OAuth refresh is blocked by HTTP 401 and
   requires reauthorization. Live remote radio start/stop still needs user testing.
 - Read `homeassistant.md` for setup/security/deployment and use the checkpoint
@@ -43,12 +69,13 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   Google credentials and no home-control APIs, through HA's supported config flow.
   Its live AI preview successfully translated "Can you keep checking OptimusPrime
   every half minute?" into start/dm:OptimusPrime/30/ping with range still stopped.
-  This agent is selected in saved remote settings, but remote control is DISABLED
-  with no approved controllers. User must favorite/select/enable the desired
-  contact. Permissions have not been inferred from old Mac advertised names.
+  At this original checkpoint remote control was DISABLED with no approved
+  controllers; this is superseded by the live bridge-fix checkpoint above.
+  Permissions have not been inferred from old Mac advertised names.
 - Quick confirmation/cancellation of a pending request bypasses new-command
   throttling. AI clarify/unrelated chat never silently becomes a range proposal;
-  only an explicit local bare `range test` may propose the controller itself.
+  deployed 0.6.0's explicit bare `range test` may propose the controller itself.
+  The staged numbered-menu change supersedes this bare-request behavior only.
 - Next deliberate test: favorite OptimusPrime, enable it in Commands and Save;
   send a fuzzy range request, confirm with 1, inspect Remote starter/ACK stats,
   then request stop and confirm. Also test cancel and permissions after HA restart

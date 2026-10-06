@@ -4,7 +4,8 @@ external_components:
   - source:
       type: git
       url: https://github.com/matthew73210/meshcore-ble-bridge
-      ref: c1c9b48f5a96b23f75d0a6c192c1acd3cc2e517e
+      # Preserve each companion command as one BLE write (fixes truncated messages).
+      ref: db6bfdef4681294bf6439d0d001e8dfeb430b556
     components: [meshcore_ble_bridge]
 
 esp32_ble:
@@ -82,6 +83,7 @@ meshcore_ble_bridge:
   port: 5000
   force_encryption: true
   wait_for_auth: true
+  write_with_response: true
 
 button:
   - platform: template

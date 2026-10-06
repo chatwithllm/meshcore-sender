@@ -57,7 +57,8 @@ async def async_attach_remote(hass, entry, coordinator):
         return "Range test started." if proposal["action"] == "start" else "Range test stopped."
 
     client.remote = RemoteCommands(client._nodes, send, execute,
-        lambda agent, text, nodes: interpret(hass, agent, text, nodes), await store.async_load())
+        lambda agent, text, nodes: interpret(hass, agent, text, nodes), await store.async_load(),
+        menu_nodes=lambda: [n for n in client._nodes() if n["id"] in client.history.data["favorites"]])
     client.remote.changed = lambda: store.async_delay_save(client.remote.snapshot, 2)
     client.remote_store = store
 
@@ -210,7 +211,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.6.0",
+            module_url="/meshcore_sender_static/workspace.js?v=0.6.1",
             require_admin=True,
         )
         state["panel"] = True

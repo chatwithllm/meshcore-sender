@@ -2,14 +2,37 @@
 
 ## Current Status (0.6.0)
 
+### Staged numbered target menus (not deployed)
+
+A bare `range test` or `targets` will reply with an alphabetical numbered menu
+of favorite contacts and channels. Select `1` or `1,2`; use `1 every 60s` to
+override the displayed interval. `next`/`back` browse longer lists and `cancel`
+exits. Selecting does not start a test: the full target/interval proposal still
+requires a separate `1`/`confirm`. Each packet fits the 150-byte UTF-8 limit and
+the menu expires after two minutes. Numbers are bound to the original list;
+removed targets or changed permissions cannot silently redirect a command.
+
+Favorites control this first-version menu's contents, not who may send commands.
+Only approved direct controllers may open/use it; channels are destinations,
+not newly authorized command sources. Existing explicit-name and natural-language
+requests retain their existing validation and confirmation boundaries. The user
+was asked to choose favorites/all available/a separate approved target list;
+favorites is the current implementation default pending that answer.
+
+83 Python tests pass. These changes are local, not published or installed in HA.
+The active range test must stop before deployment/reload; no live menu test was
+sent. Read `PROJECT_STATUS.md` for the latest live state and resume instructions.
+
 The native HA workspace is deployed with Inbox, Compose, Range, Contacts,
 Commands and Map. Remote commands and tool-free HA AI interpretation are built;
 the separate **MeshCore AI Google** agent is selected and preview-verified.
-Remote control is disabled with no approved controllers until the user opts in.
+Remote control is now enabled with two user-approved controllers; an OptimusPrime
+range test is running every 30s with remote starter attribution and ACKs.
 The separate Codex agent still needs login reauthorization (OAuth refresh 401).
 
-No coding or deployment process remains in progress. Live controller confirmation,
-start/stop and enabled-controller restart testing are awaiting user validation.
+No build/deployment process remains running. Numbered menus are staged above;
+confirmed remote start is verified, while stop/cancel, fuzzy AI interpretation
+and enabled-controller restart testing still await acceptance checks.
 Contact URI import/export, discovery schedules and additional map layers remain
 in the pipeline, not implemented in native HA. Channel-based controllers are
 deferred pending an authorization design.
@@ -287,14 +310,50 @@ verify starter attribution, successive transmissions and ACK counts.
 
 ## PIN-capable BLE bridge mode (0.3.0)
 
+### Whole-frame reply fix (2026-10-06)
+
+The dedicated bridge now pins upstream
+`db6bfdef4681294bf6439d0d001e8dfeb430b556`, including its
+[outgoing-message truncation fix](https://github.com/matthew73210/meshcore-ble-bridge/pull/6).
+The previous revision split each companion command into independent 20-byte BLE
+writes. MeshCore treats each write as a complete command; a direct-message
+header consumes 13 bytes, explaining why the recipient got only `Start O` even
+though HA recorded the full confirmation and an ACK. This was not an AI failure
+or a phone preview issue. The fix queues whole command frames and explicitly
+uses writes with response, allowing the GATT stack to handle long writes.
+
+ESPHome backup `77f4c170` preceded firmware installation job `e0a617fa16aa`
+(exit 0). Only `ble-proxy-c3` was updated. Wi-Fi, encrypted API, OTA, runtime PIN
+and pairing settings were preserved; HA reconnected with 127 contacts/channels,
+two approved controllers, remote control enabled and range stopped. No HA
+restart, PIN change or agent-triggered radio test was performed.
+
+Post-flash recovery: the initial cached connection status was not sufficient;
+the inbox remained stale. Reloading only the native MeshCore config entry while
+the test was stopped completed a fresh handshake and retrieved pending messages.
+The user's next range command and `1` confirmation arrived in HA and started an
+OptimusPrime test at 30s, attributed to `Remote: OptimusPrime`, with its first
+ping acknowledged. After bridge updates, verify a fresh handshake and incoming
+message rather than relying only on cached health. Do not reload during a test.
+
+`python3 tests/check_bridge_frames.py` tests the actual pinned upstream writer in
+a compiled non-radio harness. All 73 existing Python tests also passed.
+Handset receipt remains an acceptance check: retry
+`Range test OptimusPrime every 30s`, verify the entire confirmation and then
+reply `1`. Package/HACS updates alone do not replace bridge firmware; compile
+and install the dedicated bridge after changing its external-component pin.
+
+### Setup
+
 For a PIN-protected radio that rejects standard proxy UART writes, use a dedicated
 ESPHome `ble_client` connection with `io_capability: keyboard_only` and a passkey
 reply. The authenticated BLE session is exposed to HA through a TCP bridge on the
 trusted LAN. This does not require a phone, Mac, or weakening radio security.
 
 The package template is `meshcore_homeassistant/ble_bridge_package.yaml`. It pins
-[meshcore-ble-bridge](https://github.com/matthew73210/meshcore-ble-bridge) v0.1.0's
-source commit. Retain the ESPHome device's board, Wi-Fi, API encryption and OTA
+[meshcore-ble-bridge](https://github.com/matthew73210/meshcore-ble-bridge) to the
+immutable whole-frame-fix revision above. Retain the ESPHome device's board,
+Wi-Fi, API encryption and OTA
 settings, remove its `bluetooth_proxy` component, and merge the package. Set
 `meshcore_radio_mac` and `meshcore_radio_pin` in ESPHome secrets. Do not expose
 secrets in logs or commit the live device configuration.

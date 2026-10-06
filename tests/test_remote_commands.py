@@ -123,7 +123,92 @@ class RemoteTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_target_is_proposed_not_executed(self):
         await self.handle("range test")
         self.execute.assert_not_awaited()
+        self.assertIn("menu", self.engine.pending[self.key])
+        await self.handle("2")
         self.assertEqual(self.engine.pending[self.key]["proposal"]["targets"], ["dm:OptimusPrime"])
+
+    async def test_menu_channel_selection_requires_separate_confirmation(self):
+        await self.engine.handle(self.key, "OptimusPrime", "range test every 60s")
+        self.assertIn("1 Family (channel)", self.send.call_args.args[1])
+        await self.engine.handle(self.key, "OptimusPrime", "1")
+        self.execute.assert_not_awaited()
+        self.assertEqual(self.engine.pending[self.key]["proposal"]["targets"], ["chan:1"])
+        self.assertEqual(self.engine.pending[self.key]["proposal"]["interval"], 60)
+        await self.engine.handle(self.key, "OptimusPrime", "1")
+        self.execute.assert_awaited_once()
+
+    async def test_menu_multiple_targets_and_interval_override(self):
+        await self.handle("targets")
+        await self.handle("1,2 every 1 min")
+        proposal = self.engine.pending[self.key]["proposal"]
+        self.assertEqual(proposal["targets"], ["chan:1", "dm:OptimusPrime"])
+        self.assertEqual(proposal["interval"], 60)
+        self.ai.assert_not_awaited(); self.execute.assert_not_awaited()
+
+    async def test_menu_invalid_selection_keeps_menu_without_ai(self):
+        await self.handle("range test")
+        for selection in ("0", "3", "1,1", "1 every 1s", "1 every 6 min"):
+            await self.handle(selection)
+            self.assertIn("menu", self.engine.pending[self.key])
+        self.ai.assert_not_awaited(); self.execute.assert_not_awaited()
+
+    async def test_menu_expiry_and_cancel_never_execute(self):
+        await self.handle("range test")
+        self.engine.pending[self.key]["expires"] = 0
+        await self.handle("2")
+        self.assertFalse(self.engine.pending)
+        await self.handle("range test")
+        await self.handle("cancel")
+        self.assertFalse(self.engine.pending)
+        self.execute.assert_not_awaited()
+
+    async def test_menu_packets_fit_utf8_radio_limit_and_numbers_are_stable(self):
+        self.nodes[:] = [{"id": f"chan:{i}", "name": chr(65+i) + "\u00e9" * 32} for i in range(10)]
+        await self.handle("help")
+        self.nodes.reverse()
+        await self.handle("next")
+        await self.handle("back")
+        for call in self.send.call_args_list:
+            self.assertLessEqual(len(call.args[1].encode()), 150)
+        await self.handle("2")
+        self.assertEqual(self.engine.pending[self.key]["proposal"]["targets"], ["chan:1"])
+
+    async def test_menu_removed_favorite_and_target_identity_fail_closed(self):
+        favorites = [self.nodes[0]]
+        self.engine.menu_nodes = lambda: favorites
+        await self.handle("range test")
+        favorites.clear()
+        await self.handle("1")
+        self.assertFalse(self.engine.pending)
+        self.execute.assert_not_awaited()
+
+    async def test_menu_clear_on_permission_change_and_restart(self):
+        await self.handle("range test")
+        restored = module.RemoteCommands(lambda: self.nodes, self.send, self.execute, self.ai, self.engine.snapshot())
+        self.assertFalse(restored.pending)
+        self.engine.configure(False, [], "")
+        self.assertFalse(self.engine.pending)
+        await self.handle("1")
+        self.execute.assert_not_awaited()
+
+    async def test_menu_changed_permissions_while_sending_cannot_arm(self):
+        async def change(*args):
+            self.engine.configure(True, [{"key": self.key, "name": "OptimusPrime"}], "")
+        self.send.side_effect = change
+        await self.handle("range test")
+        self.assertFalse(self.engine.pending)
+
+    async def test_undelivered_menu_cannot_arm(self):
+        self.send.return_value = {"ok": False}
+        with self.assertRaises(ValueError):
+            await self.handle("range test")
+        self.assertFalse(self.engine.pending)
+
+    async def test_menu_malformed_numeric_response_does_not_call_ai(self):
+        await self.handle("range test")
+        await self.handle("1 every -2s")
+        self.assertIn("menu", self.engine.pending[self.key])
+        self.ai.assert_not_awaited(); self.execute.assert_not_awaited()
 
     async def test_removed_target_cannot_execute(self):
         await self.handle("range test OptimusPrime every 30s")

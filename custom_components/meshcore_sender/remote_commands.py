@@ -7,8 +7,9 @@ import time
 
 
 class RemoteCommands:
-    def __init__(self, nodes, send, execute, interpret, data=None, changed=lambda: None):
+    def __init__(self, nodes, send, execute, interpret, data=None, changed=lambda: None, menu_nodes=None):
         self.nodes = nodes
+        self.menu_nodes = menu_nodes or nodes
         self.send = send
         self.execute = execute
         self.interpret = interpret
@@ -113,7 +114,7 @@ class RemoteCommands:
         if not 5 <= interval <= 300:
             raise ValueError("Interval must be 5-300 seconds")
         if not target_text:
-            return {"action": "clarify", "interval": interval, "default_sender": True}
+            return {"action": "clarify", "interval": interval, "target_menu": True}
         pieces = re.split(r"\s+and\s+|\s*,\s*", target_text)
         targets = []
         for piece in pieces:
@@ -127,21 +128,83 @@ class RemoteCommands:
         if not self.allowed(key):
             return
         # Names may change; resolve the saved public key at transmission time.
-        await self.send(key, text)
+        result = await self.send(key, text)
+        if isinstance(result, dict) and not result.get("ok", True):
+            raise ValueError("Reply was not delivered")
         self.record(name, text)
 
-    async def offer(self, key, name, proposal):
-        if proposal["action"] == "clarify":
-            if not proposal.get("default_sender"):
-                await self.reply(key, name, "Specify targets: range test NAME every 30s. Multiple: NAME1 and NAME2. Cancel to exit.")
-                return
-            choices = [{"action": "start", "targets": [n["id"]],
-                        "interval": proposal.get("interval", 30), "prefix": "ping"}
-                       for n in self.nodes() if n["name"].casefold() == name.casefold()][:1]
+    @staticmethod
+    def menu_label(text, limit=45):
+        raw = text.encode("utf-8")
+        return text if len(raw) <= limit else raw[:limit - 3].decode("utf-8", errors="ignore") + "..."
+
+    async def show_menu(self, key, name, interval=30, pending=None, page=0):
+        revision = self.revision
+        if pending is None:
+            nodes = self.menu_nodes()
+            choices = [copy.deepcopy(n) for n in nodes
+                       if sum(other["id"] == n["id"] for other in nodes) == 1]
+            choices.sort(key=lambda n: (n["name"].casefold(), n["id"]))
             if not choices:
+                await self.reply(key, name, "No range targets in this menu. Ask the administrator to add favorite contacts or channels. Cancel to exit.")
+                return
+            pending = {"menu": choices, "interval": interval, "expires": time.monotonic() + 120}
+        lines = [f"{i} {self.menu_label(n['name'])} ({'channel' if n['id'].startswith('chan:') else 'contact'})"
+                 for i, n in enumerate(pending["menu"], 1)]
+        header = f"Range targets, every {pending['interval']}s:\n"
+        footer = "\nReply 1 or 1,2; 1 every 60s; next/back; cancel. Expires 2m."
+        pages, current = [], []
+        for line in lines:
+            if current and len((header + "\n".join(current + [line]) + footer).encode()) > 150:
+                pages.append(current)
+                current = []
+            current.append(line)
+        if current:
+            pages.append(current)
+        page = max(0, min(page, len(pages) - 1))
+        await self.reply(key, name, header + "\n".join(pages[page]) + footer)
+        if self.allowed(key) and revision == self.revision:
+            pending["page"] = page
+            self.pending[key] = pending
+
+    async def select_menu(self, key, name, text, pending):
+        match = re.fullmatch(r"(\d+(?:\s*,\s*\d+)*)(?:\s+every\s+(\d+)\s*(s|sec|secs|seconds?|m|min|minutes?))?", text)
+        if not match:
+            return False
+        if pending["expires"] < time.monotonic():
+            self.pending.pop(key, None)
+            await self.reply(key, name, "Target menu expired. Send range test for a new list.")
+            return True
+        numbers = [int(n.strip()) for n in match[1].split(",")]
+        interval = int(match[2]) * (60 if match[3].startswith("m") else 1) if match[2] else pending["interval"]
+        if (not 1 <= len(numbers) <= 8 or len(set(numbers)) != len(numbers)
+                or any(not 1 <= n <= len(pending["menu"]) for n in numbers) or not 5 <= interval <= 300):
+            await self.reply(key, name, "Choose 1-8 distinct numbers from the menu; interval must be 5-300s. Cancel to exit.")
+            return True
+        available = self.menu_nodes()
+        targets = []
+        for number in numbers:
+            choice = pending["menu"][number - 1]
+            matches = [n for n in available if
+                       (n.get("public_key") == choice["public_key"] if choice.get("public_key")
+                        else n["id"] == choice["id"] and n["name"] == choice["name"])]
+            if len(matches) != 1:
+                self.pending.pop(key, None)
+                await self.reply(key, name, "A selected target changed or is unavailable. Send range test for a new list.")
+                return True
+            targets.append(matches[0]["id"])
+        self.pending.pop(key, None)
+        await self.offer(key, name, {"action": "start", "targets": targets, "interval": interval, "prefix": "ping"})
+        return True
+
+    async def offer(self, key, name, proposal):
+        revision = self.revision
+        if proposal["action"] == "clarify":
+            if not proposal.get("target_menu"):
                 await self.reply(key, name, "Specify targets: range test NAME every 30s. Multiple: NAME1 and NAME2. Cancel to exit.")
                 return
-            proposal = choices[0]
+            await self.show_menu(key, name, proposal.get("interval", 30))
+            return
         proposal = self.validate(proposal)
         if proposal["action"] not in ("start", "stop"):
             return
@@ -157,7 +220,7 @@ class RemoteCommands:
         else:
             text = "Stop the current range test? 1 confirm, cancel. Expires 2 min."
         await self.reply(key, name, text)
-        if self.allowed(key):
+        if self.allowed(key) and revision == self.revision:
             self.pending[key] = {"proposal": proposal, "expires": time.monotonic() + 120}
 
     async def handle(self, key, name, text):
@@ -165,7 +228,10 @@ class RemoteCommands:
             return
         now = time.monotonic()
         value = text.strip().lower()
-        responding = key in self.pending and value in ("1", "confirm", "cancel", "cancel command")
+        menu = self.pending.get(key)
+        menu = menu if menu and "menu" in menu else None
+        responding = key in self.pending and (value in ("1", "confirm", "cancel", "cancel command")
+                     or menu and (value in ("next", "back") or value[:1].isdigit()))
         if now - self.recent.get(key, -100) < 2 and not responding:
             self.record(name, "Rate limited")
             return
@@ -174,6 +240,22 @@ class RemoteCommands:
             self.pending.pop(key, None)
             await self.reply(key, name, "Command cancelled. A running test is unchanged; send stop range test to stop it.")
             return
+        if menu:
+            if value in ("next", "back"):
+                if menu["expires"] < now:
+                    self.pending.pop(key, None)
+                    await self.reply(key, name, "Target menu expired. Send range test for a new list.")
+                else:
+                    await self.show_menu(key, name, pending=menu, page=menu["page"] + (1 if value == "next" else -1))
+                return
+            if await self.select_menu(key, name, value, menu):
+                return
+            if value[:1].isdigit():
+                await self.reply(key, name, "Reply with a number, 1,2 for several, or 1 every 60s. Cancel to exit.")
+                return
+            if value == "confirm":
+                await self.reply(key, name, "Choose a target number first. No test started.")
+                return
         if value in ("1", "confirm"):
             pending = self.pending.pop(key, None)
             if not pending or pending["expires"] < now:
@@ -186,14 +268,15 @@ class RemoteCommands:
         self.pending.pop(key, None)
         revision = self.revision
         try:
-            proposal = self.parse(text)
+            proposal = ({"action": "clarify", "target_menu": True, "interval": 30}
+                        if value in ("help", "targets", "range targets", "range test targets") else self.parse(text))
             if proposal is None and self.data["agent_id"]:
                 proposal = self.validate(await asyncio.wait_for(
                     self.interpret(self.data["agent_id"], text, self.nodes()), timeout=25))
             if revision != self.revision or not self.allowed(key):
                 return
             if proposal is None:
-                await self.reply(key, name, "Commands: status; range test NAME every 30s; stop range test; cancel.")
+                await self.reply(key, name, "Commands: status; range test (numbered targets); range test NAME every 30s; stop range test; cancel.")
             elif proposal["action"] == "status":
                 await self.reply(key, name, await self.execute(proposal, name))
             elif proposal["action"] == "cancel":

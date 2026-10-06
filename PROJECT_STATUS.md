@@ -6,14 +6,27 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 ## Current Checkpoint
 
 - Active product: native Home Assistant integration and `/meshcore` sidebar.
-- Version: **0.6.0**, deployed code revision **`d02d846`**. Later commits update
-  documentation only; they do not require another HA restart.
+- HA integration version: **0.6.0**, deployed code revision **`d02d846`**.
+  The later bridge transport fix below changes ESPHome firmware, not HA code;
+  it does not require an HA restart.
 - Deployment: HACS install, verified HA backup **`f8aaf3f1`**, configuration check,
   restart and radio reconnection completed. Registered frontend:
   `/meshcore_sender_static/workspace.js?v=0.6.0`.
-- Last verified settings: **remote control disabled**, **zero approved controllers**,
-  **MeshCore AI Google selected**, **range test stopped**. Agent selection survived
-  restart. Recheck live state before changing settings or deploying.
+- Latest live check after connection recovery: **remote control enabled**, **two
+  approved controllers**, **range test running for OptimusPrime every 30 seconds**,
+  starter **Remote: OptimusPrime**, first ping **1 sent / 1 ACK**. HA received the
+  user's new command and `1` confirmation. Google was the previously verified AI agent.
+  Recheck live settings before changing permissions or deploying.
+- Bridge firmware: pinned upstream **`db6bfdef4681294bf6439d0d001e8dfeb430b556`**,
+  installed by ESPHome job **`e0a617fa16aa`**, exit 0, after ESPHome backup
+  **`77f4c170`**. Full-frame writes with response replace the old 20-byte split;
+  Wi-Fi/API/OTA, pairing and persistent runtime PIN settings were preserved.
+- Recovery correction: the initial post-flash cached health said connected but
+  the inbox was stale. Reloaded only entry `01M47GQ1BN3ND5XGNKKG3V7C2B` while
+  the range test was stopped; the fresh handshake recovered pending inbox data
+  and 142 contacts/channels. Subsequent command and confirmation arrived live.
+  After future bridge firmware updates, verify a fresh handshake/inbox event,
+  not just cached `available` status. Never reload during this active test.
 - No implementation, deployment, build or test process was left running by the agent.
 - Original Mac/server implementation remains saved in the repository. Mac history,
   API keys and controller permissions were not automatically imported into HA.
@@ -30,6 +43,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 | HA AI reuse | Tool-free conversation-agent selector, validated JSON proposals, fallback-only AI interpretation and non-transmitting preview. Separate Google/Codex subentries reuse their existing HA credentials. |
 | AI verification | Google preview translated "Can you keep checking OptimusPrime every half minute?" to a start proposal for that contact at 30 seconds, without executing it. |
 | Runtime PIN | Masked admin dialog and persistent bridge override, without rebuilding firmware for subsequent PIN changes. |
+| BLE reply truncation | Updated bridge firmware preserves complete MeshCore commands instead of independent 20-byte writes. HA reconnection verified; recipient-side retry still required. |
 | Repeater map | Advertised GPS, marker/list selection, persistent popup close, local state classification/filter, reference-based km/mi distances, name/distance sorting and taller responsive list. |
 | Verification | 73 Python tests, geography tests, four-width Chromium fixtures and live Chromium/Safari-WebKit Commands checks at 390/1366px passed. |
 | Documentation | Setup, security boundaries, deployment history and agent handover are saved in GitHub. |
@@ -44,9 +58,33 @@ range test. AI cannot access household-control tools through the MeshCore adapte
 No coding work is currently in flight. These items need user participation or a
 deliberate follow-up, and must not be described as verified end to end:
 
-- **Live remote control:** user must favorite/select a controller and enable it.
-  Automated fixtures tested execution boundaries; no live remote start/stop or
-  radio transmissions were performed during this migration's verification.
+- **Numbered range-target menu: implemented locally, NOT deployed.** A bare
+  `range test`, `range test every 60s`, `help`, or `targets` opens an alphabetical
+  menu of favorite contacts/channels. Numbers stay bound to that menu snapshot;
+  `next`/`back` page through 150-byte UTF-8 packets. Reply `1`, `1,2`, or
+  `1 every 60s` to select, then a separate `1`/`confirm` approves the resulting
+  full target/interval proposal. Menus expire after two minutes, are not restored
+  after restart, and clear on cancel/permission changes. Removed favorites and
+  changed identities cannot execute. 83 Python tests pass. Live test is active;
+  defer deployment/reload until the user stops it. The menu scope question
+  (favorites/all available/separate approved list) was asked; favorites is the
+  conservative first-version default pending the user's answer. Favorites are
+  menu candidates, NOT controller authorization or a new restriction on explicit
+  named-target requests; those retain existing validation and confirmation.
+
+- **Full reply receipt:** user's opened handset messages showed literal `Start O`,
+  not a clipped preview. HA recorded the full confirmation and a delivery ACK,
+  but the old bridge split its 13-byte direct-message header plus text into
+  20-byte commands, leaving seven text bytes in the first write. The upstream
+  fix is installed. A compiled regression harness reproduces the old symptom
+  and checks intact normal, maximum-length and UTF-8 frames, plus long-write and
+  oversize-no-response handling. It tests the upstream writer/queue, not actual
+  GATT reassembly or handset receipt. No agent-triggered test messages were sent.
+- **Live remote control:** user's new `Range test OptimusPrime Every 30s` and `1`
+  arrived after connection recovery; confirmed start is verified with 1 sent /
+  1 ACK and correct starter attribution. Stop/cancel, enabled-permission restore,
+  and fuzzy AI fallback still need acceptance testing. Do not mistake an ACK for
+  independent proof that the handset rendered the complete original text.
 - **Codex login:** the existing OAuth token refresh returned HTTP 401. The separate
   `MeshCore AI` agent is tool-free but not provider-functional until reauthorization.
   Google is the verified selected agent. Do not delete/reconfigure household agents
@@ -60,9 +98,18 @@ deliberate follow-up, and must not be described as verified end to end:
 
 ### Next Acceptance Test
 
-1. In Contacts, favorite OptimusPrime. In Commands, select it, enable remote
-   control, retain MeshCore AI Google, and Save.
-2. From OptimusPrime, send `status`; verify both the received message and reply.
+After the active test stops, deploy the staged menu change using the normal
+backup/HACS/config-check/reload process. Increment the integration release
+version before publishing. Then also test `range test` -> numbered menu -> target
+number -> separate confirmation, a channel/multiple targets, `next`/`back`,
+`1 every 60s`, invalid numbers and cancel. No menu-specific live transmissions
+were performed by the agent.
+
+1. Verify OptimusPrime is one of the approved controllers in Commands. Preserve
+   the user's enabled settings and tool-free agent selection.
+2. Send `Range test OptimusPrime every 30s`; verify the handset receives the
+   entire confirmation including `1 confirm, cancel`, not just `Start O`.
+   Then send `status` and verify both the received message and the full reply.
 3. Send `Can you keep checking OptimusPrime every half minute?`; verify a proposal
    appears and the range test has **not** started yet.
 4. Reply `1`; verify Range shows `Remote: OptimusPrime`, a 30-second interval and
@@ -107,6 +154,11 @@ Suggested order after acceptance testing, **not implemented or scheduled**:
 - Tests: `python3 -m unittest discover -s tests`, `node tests/map_states.cjs`, and
   `node tests/workspace_browser.cjs` with Playwright installed or
   `PLAYWRIGHT_MODULE` pointing to it. Fixtures do not use real radio/provider calls.
+- Bridge regression: `python3 tests/check_bridge_frames.py` compiles the actual
+  immutable upstream frame writer with a non-radio C++ harness; requires a C++
+  compiler and downloads public source. `--source /path/to/meshcore_ble_bridge.cpp`
+  supports offline testing. After changing the package pin, rebuild/install only
+  the dedicated ESPHome bridge; HACS alone cannot update its firmware.
 - Live host: HA OS at `homeassistant.local:8123` / `192.168.20.11`. Sidebar:
   `https://homeassistant.npalakurla.net/meshcore`.
 - Native entry: `01M47GQ1BN3ND5XGNKKG3V7C2B`; bridge: `ble-proxy-c3` /
