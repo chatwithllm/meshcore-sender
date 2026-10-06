@@ -1,6 +1,13 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
 CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
+- Rollout correction: user's existing Safari session did not show Sort after
+  the file-only update. Once the range test was confirmed stopped, the pending
+  HA restart was completed (backup `45a61ce6`). The registered module URL is
+  now explicitly `workspace.js?v=0.5.3`. Fresh Safari/WebKit desktop verification
+  confirms Sort and both distance orders, with 506px list height and no page
+  errors. Radio reconnected; range stopped. Full browser-tab reload is required
+  for an existing tab, since the data-refresh icon cannot replace loaded JS.
 - Version 0.5.3 adds Map name/nearest/farthest sorting, based on unrounded
   distances with stable tie-breaking. Without a reference, distance modes are
   disabled and revert to A-Z. Filter/poll/tab changes retain the chosen mode.
@@ -8,9 +15,10 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.3)
   desktop map stretches with the sidebar. Four-width browser checks cover both.
 - Latest installation: `d2e34a3` / 0.5.3 via HACS on 2026-10-06, verified HA
   backup `45a61ce6` and core check. An active range test was preserved: NO HA
-  restart. Fresh workspace loads serve the new static JS (cache headers off),
-  while the in-memory panel's old version query updates at the next normal
-  restart. Do not force a restart while the test is running. Live 390/1366px
+  restart. Fresh local sessions loaded new JS, but the user's existing Safari
+  session retained the old UI through the old registered version URL. Complete
+  frontend rollouts with a safe HA restart and a full browser-tab reload, not
+  the workspace's data-refresh icon. Never restart during an active test. Live 390/1366px
   nearest/farthest checks pass, with 464/506px list heights and no page errors.
   43 Python tests and four-width browser fixtures pass; no live sends/PIN changes.
 - Version 0.5.2 adds straight-line km/mi distances to each Map list row. Clicking

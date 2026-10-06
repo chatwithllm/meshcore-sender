@@ -16,14 +16,24 @@ minimum list heights alongside existing map/distance checks.
 
 Installed on 2026-10-06 through HACS revision `d2e34a3`, after verified backup
 `45a61ce6` and a passing configuration check. A range test was active, so HA was
-not restarted and the test remained running. Static assets are served without
-cache headers: refreshing the workspace loads the new display immediately.
-The in-memory panel URL still has the previous version query until HA's next
-normal restart; no restart is needed for these sorting/height features.
+not restarted and the test remained running. Fresh local browser sessions loaded
+the new static files, but the in-memory panel still registered the previous
+version URL. The user's existing Safari session subsequently kept the old UI.
+Do not treat a static-file-only installation as a completed frontend rollout:
+when it is safe to restart HA, update the registered version URL, then reload
+the browser tab. MeshCore's refresh icon only refreshes data, not frontend code.
 Live 390/1366px checks verify ascending/descending distance order and polling
 persistence, with list heights 464/506px. All 43 Python tests and four-width
 browser fixtures pass, with zero MeshCore page errors. No radio messages were
 sent by the verification, and no firmware/PIN changes were made.
+
+Rollout correction on 2026-10-06: after confirming the user's range test had
+stopped, the pending HA restart was completed using verified backup `45a61ce6`.
+The registered panel now points to `workspace.js?v=0.5.3`, rather than 0.5.2.
+Fresh Safari/WebKit checks confirm Sort is visible below Distance from and
+nearest/farthest modes work; desktop list height is 506px. The radio reconnected
+with 125 contacts/channels and 92 GPS repeaters, and range remains stopped.
+Existing browser tabs must reload the page to replace the old custom element.
 
 ## Repeater Distances (0.5.2)
 
