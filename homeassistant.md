@@ -21,6 +21,16 @@ locations, multi-part island states and polygon holes) and four-width browser
 fixtures (filter synchronization, search intersections, empty results, polling,
 tab re-entry, selection clearing and phone layout).
 
+Deployed on 2026-10-06: HACS installed `3904d0d` (0.5.1) after HA backup
+`fbfee7f0`, a passing configuration check and restart. The live radio reports
+122 contacts/channels and 89 GPS repeaters, with no running range test.
+Live browser checks at 390/1366px confirm Indiana filters to 10 matching rows
+and markers, retains its selection during polling and combines with search.
+Map selection/zoom/popup close and PIN-dialog cancellation still pass; no
+MeshCore page errors or live radio transmissions occurred. All 43 Python tests,
+the geography checks and browser fixtures at 375/390/768/1366px pass. The bridge
+firmware and PIN were not changed for this update.
+
 ## Runtime PIN And Repeater Map (0.5.0)
 
 The sidebar now includes **Map**, showing native-radio repeaters with valid

@@ -7,6 +7,12 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.1)
   classify coordinates; no geocoder or guessed states. Non-US/unmatched points
   stay available under Outside US / unclassified. Boundary provenance/licenses
   are in `www/vendor/STATE-DATA.md`; geography tests in `tests/map_states.cjs`.
+- Latest deployed revision: `3904d0d` / 0.5.1 on 2026-10-06, after HA backup
+  `fbfee7f0`, core check and restart. Radio connected: 122 contacts/channels,
+  89 GPS repeaters, range stopped. Live 390/1366px state-filter checks show
+  Indiana's 10 markers/rows matching, with polling/search working and no
+  MeshCore page errors. 43 Python tests, geography tests and four-width browser
+  fixtures pass. No firmware/PIN changes or live transmissions in this update.
 - Version 0.5.0 adds runtime bridge PIN updates and a native repeater map. Read
   the first section of `homeassistant.md` and `bridge.py`. PIN updates use a
   separate admin-only WebSocket command with the redacted `password` field,
