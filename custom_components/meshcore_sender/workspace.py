@@ -9,6 +9,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .history import MessageHistory
+from .bridge import find_pin_bridge, update_radio_pin
 
 STATE_KEY = DOMAIN + "_workspace"
 
@@ -84,6 +85,7 @@ async def websocket_workspace(hass, connection, msg):
             "entries": [{"id": k, "name": v.entry.title} for k, v in entries.items()],
             "nodes": data.get("nodes", []), "health": data.get("health", {}),
             "available": chosen.last_update_success,
+            "pin_update_supported": bool(find_pin_bridge(hass, chosen)),
             "settings": {"target": chosen.setting("target"), "interval": chosen.setting("interval", 30),
                          "targets": chosen.setting("workspace_targets"),
                          "prefix": chosen.setting("workspace_prefix", "ping")},
@@ -94,6 +96,29 @@ async def websocket_workspace(hass, connection, msg):
         connection.send_error(msg["id"], "meshcore_error", str(error) or "Radio action failed")
 
 
+@websocket_api.websocket_command({
+    vol.Required("type"): "meshcore_sender/update_radio_pin",
+    vol.Required("entry_id"): str,
+    # HA's websocket exception logger redacts the standard password field.
+    vol.Required("password"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_update_radio_pin(hass, connection, msg):
+    chosen = hass.data.get(DOMAIN, {}).get(msg["entry_id"])
+    if chosen is None:
+        connection.send_error(msg["id"], "invalid_entry", "Choose a valid MeshCore radio")
+        return
+    try:
+        result = await update_radio_pin(hass, chosen, msg["password"])
+        connection.send_result(msg["id"], result)
+    except ValueError as error:
+        connection.send_error(msg["id"], "invalid_pin_update", str(error))
+    except Exception:
+        # Transport exceptions can contain serialized arguments; never echo them.
+        connection.send_error(msg["id"], "pin_update_failed", "Could not update the bridge PIN. Check its connection.")
+
+
 async def async_setup_workspace(hass):
     state = hass.data.setdefault(STATE_KEY, {})
     if not state.get("registered"):
@@ -101,12 +126,13 @@ async def async_setup_workspace(hass):
             StaticPathConfig("/meshcore_sender_static", str(Path(__file__).parent / "www"), False)
         ])
         websocket_api.async_register_command(hass, websocket_workspace)
+        websocket_api.async_register_command(hass, websocket_update_radio_pin)
         state["registered"] = True
     if not state.get("panel"):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.4.0",
+            module_url="/meshcore_sender_static/workspace.js?v=0.5.0",
             require_admin=True,
         )
         state["panel"] = True

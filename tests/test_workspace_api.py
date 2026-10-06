@@ -15,7 +15,7 @@ handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef)
 
 class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        namespace = {"DOMAIN": "meshcore_sender"}
+        namespace = {"DOMAIN": "meshcore_sender", "find_pin_bridge": lambda *args: None}
         node = copy.deepcopy(handler)
         node.decorator_list = []
         exec(compile(ast.Module(body=[node], type_ignores=[]), "workspace_handler", "exec"), namespace)
@@ -75,3 +75,13 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         result = self.connection.send_result.call_args.args[1]
         self.assertEqual(result["messages"][0]["target"], "dm:OptimusPrime")
         self.assertEqual(saved["messages"][0]["name"], "Unknown")
+
+    async def test_pin_handler_is_admin_only_and_hides_transport_errors(self):
+        pin_handler=next(n for n in source.body if isinstance(n,ast.AsyncFunctionDef)
+                         and n.name=='websocket_update_radio_pin')
+        self.assertIn('websocket_api.require_admin',[ast.unparse(n) for n in pin_handler.decorator_list])
+        node=copy.deepcopy(pin_handler);node.decorator_list=[]
+        namespace={'DOMAIN':'meshcore_sender','update_radio_pin':AsyncMock(side_effect=RuntimeError('secret 012345'))}
+        exec(compile(ast.Module(body=[node],type_ignores=[]),'pin_handler','exec'),namespace)
+        await namespace['websocket_update_radio_pin'](self.hass,self.connection,{'id':1,'entry_id':'entry','password':'012345'})
+        self.assertNotIn('012345',str(self.connection.send_error.call_args))

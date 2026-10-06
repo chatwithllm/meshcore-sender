@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import math
 
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 from homeassistant.components import bluetooth
@@ -132,8 +133,16 @@ class NativeMeshCoreClient:
         for contact in self.mc.contacts.values():
             name = (contact.get("adv_name") or "").strip()
             if name:
-                nodes.append({"id": "dm:" + name, "name": name,
-                              "kind": {2: "repeater", 3: "room"}.get(contact.get("type"), "node")})
+                node = {"id": "dm:" + name, "name": name,
+                        "kind": {2: "repeater", 3: "room"}.get(contact.get("type"), "node")}
+                try:
+                    lat, lon = float(contact.get("adv_lat")), float(contact.get("adv_lon"))
+                    # The SDK already converts the wire's microdegrees to degrees.
+                    if math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180 and (lat or lon):
+                        node.update(lat=lat, lon=lon)
+                except (TypeError, ValueError):
+                    pass
+                nodes.append(node)
         return nodes
 
     async def send_one(self, target, text, timeout=20):

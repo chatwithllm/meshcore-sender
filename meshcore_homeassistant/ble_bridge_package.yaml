@@ -12,15 +12,69 @@ esp32_ble:
 
 esp32_ble_tracker:
 
+globals:
+  - id: runtime_meshcore_pin
+    type: uint32_t
+    restore_value: true
+    initial_value: '1000000'
+
+api:
+  actions:
+    - action: update_meshcore_pin
+      supports_response: status
+      variables:
+        password: string
+      then:
+        - if:
+            condition:
+              lambda: |-
+                if (password.size() != 6) return false;
+                for (char c : password) if (c < '0' || c > '9') return false;
+                return true;
+            then:
+              - globals.set:
+                  id: runtime_meshcore_pin
+                  value: !lambda 'return std::strtoul(password.c_str(), nullptr, 10);'
+              # globals' schema declares a non-polling base; flush the restoring instance explicitly.
+              - lambda: runtime_meshcore_pin->update();
+              - if:
+                  condition:
+                    lambda: 'return global_preferences->sync();'
+                  then:
+                    - api.respond:
+                        success: true
+                    - lambda: id(meshcore_ble).set_enabled(false);
+                    - delay: 2s
+                    - ble_client.remove_bond:
+                        id: meshcore_ble
+                    - delay: 1s
+                    - lambda: id(meshcore_ble).set_enabled(true);
+                  else:
+                    - api.respond:
+                        success: false
+                        error_message: "Could not save the radio PIN"
+            else:
+              - api.respond:
+                  success: false
+                  error_message: "Enter exactly six digits"
+
 ble_client:
   - mac_address: !secret meshcore_radio_mac
     id: meshcore_ble
     auto_connect: true
     on_passkey_request:
       then:
-        - ble_client.passkey_reply:
-            id: meshcore_ble
-            passkey: !secret meshcore_radio_pin
+        - if:
+            condition:
+              lambda: 'return id(runtime_meshcore_pin) <= 999999;'
+            then:
+              - ble_client.passkey_reply:
+                  id: meshcore_ble
+                  passkey: !lambda 'return id(runtime_meshcore_pin);'
+            else:
+              - ble_client.passkey_reply:
+                  id: meshcore_ble
+                  passkey: !secret meshcore_radio_pin
 
 meshcore_ble_bridge:
   id: meshcore_bridge

@@ -1,6 +1,18 @@
 TASK: continue hardening a local MeshCore messaging app on macOS
 
-CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.4.0)
+CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.5.0)
+- Version 0.5.0 adds runtime bridge PIN updates and a native repeater map. Read
+  the first section of `homeassistant.md` and `bridge.py`. PIN updates use a
+  separate admin-only WebSocket command with the redacted `password` field,
+  directly invoking the matching encrypted ESPHome runtime API (no HA service
+  bus, PIN entity or options storage). Persisted PIN lives only on the bridge.
+- Updated `ble_bridge_package.yaml` adds `update_meshcore_pin` and a restoring
+  global override. Secrets supply only the initial/factory-reset fallback.
+  After the one-time firmware update, the HA key-icon dialog saves/reconnects
+  without rebuilding. Never print PINs or raw firmware/config/transport logs.
+- Map uses bundled Leaflet 1.9.4 and OSM tiles. `_nodes()` exposes validated
+  degree-valued SDK coordinates. Markers/list sync, zoom 12 on selection, popup
+  close survives polling, and mobile stacks map/list. Never infer node locations.
 - Read `homeassistant.md` first for the native HA migration. Current development
   is in `custom_components/meshcore_sender/`, not the Mac wrapper.
 - `/meshcore` sidebar panel: Inbox, Compose, Range and Contacts/favorites. The
@@ -17,7 +29,7 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.4.0)
   Codex HA header helper for authorized API access; do not hardcode tokens.
 - New native inbox starts with this version: old HA events and Mac history are
   not automatically imported. Range tests stop at restart; defaults persist.
-- Remote-command controller management, AI, contact import/export, map and
+- Remote-command controller management, AI, contact import/export and
   discovery scans are still pending migration. Do not claim complete Mac parity.
 - Tests: Python unittest suite plus `tests/workspace_browser.cjs` (Playwright).
   Browser actions use fixtures and must not secretly send live radio messages.

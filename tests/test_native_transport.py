@@ -5,6 +5,7 @@ import asyncio
 import importlib.util
 from pathlib import Path
 import time
+import math
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock
@@ -29,7 +30,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.tcp = Mock()
         self.ble = Mock()
         self.sdk = Mock(return_value=self.radio)
-        namespace = {"asyncio": asyncio, "time": time,
+        namespace = {"asyncio": asyncio, "time": time, "math": math,
                      "NativeRangeTest": range_module.NativeRangeTest,
                      "MeshCoreError": RuntimeError,
                      "TCPConnection": self.tcp, "ProxyBLEConnection": self.ble,
@@ -76,3 +77,15 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
             await client.request("GET", "/api/nodes")
         self.radio.disconnect.assert_awaited_once()
         self.assertIsNone(client.mc)
+
+    async def test_coordinates_keep_sdk_degrees_and_reject_invalid_gps(self):
+        self.radio.contacts={'a':{'adv_name':'GPS repeater','type':2,'adv_lat':39.7,'adv_lon':-85.99},
+                             'b':{'adv_name':'No GPS','type':2,'adv_lat':0,'adv_lon':0},
+                             'c':{'adv_name':'Bad GPS','type':2,'adv_lat':float('nan'),'adv_lon':190}}
+        client=self.Client(self.hass,'bridge',host='bridge')
+        nodes=(await client.request('GET','/api/nodes'))['nodes']
+        gps=next(n for n in nodes if n['name']=='GPS repeater')
+        self.assertEqual(gps['lat'],39.7)
+        self.assertEqual(gps['lon'],-85.99)
+        self.assertTrue(all('lat' not in n for n in nodes if n['name'] in ('No GPS','Bad GPS')))
+        await client.close()

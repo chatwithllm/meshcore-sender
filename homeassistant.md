@@ -1,5 +1,41 @@
 # Home Assistant
 
+## Runtime PIN And Repeater Map (0.5.0)
+
+The sidebar now includes **Map**, showing native-radio repeaters with valid
+advertised GPS. Select a marker or its list row: both selections stay in sync,
+the map centers at zoom 12, and the name/coordinates/full-map link appear in a
+popup. Closing the popup does not clear selection or reopen it on polling.
+Fit All restores the overview. The phone layout stacks the map above its list.
+Only advertised locations are shown; they are not inferred from radio paths.
+Leaflet 1.9.4 and its license are bundled locally; OpenStreetMap bitmap tiles
+require internet and retain their attribution.
+
+For PIN-capable ESPHome bridges, the header's **key icon** opens **Update radio
+PIN**. Enter the current six-digit Heltec PIN, then **Save & reconnect**. This
+does not change the Heltec's own PIN; it updates the bridge to match it.
+Runtime support requires one firmware installation using the updated
+`meshcore_homeassistant/ble_bridge_package.yaml`. Later PIN changes do not
+require changing Secrets or rebuilding firmware.
+
+The bridge saves the runtime PIN in ESP32 preferences and flushes the change
+before confirming success. It then clears only that radio's bond and reconnects.
+The saved value overrides `meshcore_radio_pin` in Secrets; the Secret remains a
+fallback for a newly installed/factory-cleared bridge. Do not factory-reset or
+erase preferences unless you intend to remove this saved override.
+
+The HA dialog is admin-only, masked, and does not retain the PIN after submission
+or cancellation. It uses HA's already-connected, encrypted ESPHome API directly,
+not a HA service call or entity: no PIN is stored in config-entry options, message
+history, entities, recorder state or automation traces by this integration.
+Only the ESPHome entry matching the configured bridge address is eligible.
+Active range tests must be stopped before updating. Sensitive transport errors
+are not echoed. Avoid enabling verbose API/protocol debugging when submitting
+credentials. ESP32 preference storage is not a hardware vault; physical access
+to an unencrypted device can expose stored secrets.
+
+Verification/deployment results for this version are recorded after installation.
+
 ## Native sidebar workspace (0.4.0)
 
 Open **MeshCore** in the Home Assistant sidebar (`/meshcore`). This is an
@@ -33,7 +69,7 @@ are not implemented for **Existing MeshCore server** entries; their server UI
 remains the interface for conversation history.
 
 Remote-command/controller management, AI interpretation, contact import/export,
-repeater map and discovery scans have **not** yet been migrated into this native
+and discovery scans have **not** yet been migrated into this native
 workspace. The original Mac/server implementation remains available in the repo.
 
 Verification: local Python tests cover incoming messages during connection startup,

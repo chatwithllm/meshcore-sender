@@ -2,6 +2,18 @@
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const icon = name => `<ha-icon icon="mdi:${name}"></ha-icon>`;
 const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+let leafletReady;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (!leafletReady) leafletReady = new Promise((resolve,reject) => {
+    const script=document.createElement('script');
+    script.src='/meshcore_sender_static/vendor/leaflet.js';
+    script.onload=()=>resolve(window.L);
+    script.onerror=()=>{leafletReady=null;script.remove();reject(new Error('Map library could not load'));};
+    document.head.append(script);
+  });
+  return leafletReady;
+}
 
 class MeshCoreWorkspace extends HTMLElement {
   constructor() {
@@ -19,10 +31,13 @@ class MeshCoreWorkspace extends HTMLElement {
     this.busy = false;
     this.data = null;
     this.entryId = null;
+    this.mapQuery = '';
+    this.mapSelected = null;
+    this.mapMarkers = new Map();
   }
   set hass(value) { this._hass = value; if (this.isConnected && !this.timer) this.start(); }
   connectedCallback() { if (this._hass) this.start(); }
-  disconnectedCallback() { clearInterval(this.timer); this.timer = null; }
+  disconnectedCallback() { clearInterval(this.timer); this.timer = null; this.disposeMap(); }
   start() {
     if (this.timer) return;
     this.render();
@@ -50,7 +65,8 @@ class MeshCoreWorkspace extends HTMLElement {
       this.error = '';
       // Keep focus, scroll position and drafts intact while background data changes.
       const editing = ['INPUT','TEXTAREA','SELECT'].includes(this.shadowRoot.activeElement?.tagName);
-      if (changed && !editing && this.view !== 'range') { this.render(); this.pendingRender = false; }
+      if (this.view === 'map' && this.leafletMap) { this.updateStatus(); this.updateMap(); this.pendingRender=false; }
+      else if (changed && !editing && this.view !== 'range' && !this.pinDialogOpen) { this.render(); this.pendingRender = false; }
       else { this.updateStatus(); this.pendingRender = changed; }
       this.signature = signature;
       if (this.view === 'range') this.updateRange();
@@ -117,16 +133,117 @@ class MeshCoreWorkspace extends HTMLElement {
   contacts() {
     return `<section class="tool"><h2>Contacts & channels</h2>${this.picker()}<p class="muted">${this.data?.nodes.length || 0} available · ${this.data?.favorites.length || 0} favorites</p></section>`;
   }
+  mapNodes() {
+    return (this.data?.nodes||[]).filter(n=>n.kind==='repeater' && Number.isFinite(n.lat) && Number.isFinite(n.lon)
+      && Math.abs(n.lat)<=90 && Math.abs(n.lon)<=180 && (n.lat!==0 || n.lon!==0));
+  }
+  mapView() {
+    return `<link rel="stylesheet" href="/meshcore_sender_static/vendor/leaflet.css"><section class="tool"><div class="section-title"><h2>Repeater map</h2><button class="icon" id="map-fit" title="Fit all repeaters" aria-label="Fit all repeaters">${icon('fit-to-screen-outline')}</button></div><div class="map-layout"><div><div id="map-canvas" aria-label="Repeater map"></div><div class="map-selection" id="map-selection">${this.mapNodes().length} repeaters with advertised GPS</div></div><aside class="map-sidebar"><input type="search" id="map-search" placeholder="Search repeaters" aria-label="Search repeaters" value="${escapeHTML(this.mapQuery)}"><div class="map-list" id="map-list"></div></aside></div><p class="muted map-note">Only repeaters with advertised GPS are shown. Coordinates may be outdated; map tiles require internet access.</p></section>`;
+  }
+  async initMap() {
+    const container=this.shadowRoot.getElementById('map-canvas');
+    if(!container) return;
+    try {
+      const L=await loadLeaflet();
+      if(!container.isConnected || this.view!=='map') return;
+      this.leafletMap=L.map(container,{zoomControl:true,scrollWheelZoom:true}).setView([39,-98],4);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+      }).addTo(this.leafletMap);
+      this.mapResize=new ResizeObserver(()=>this.leafletMap?.invalidateSize());
+      this.mapResize.observe(container);
+      this.mapSignature=null;this.updateMap();this.fitMap();
+      if(this.mapSelected) this.selectMapNode(this.mapSelected,false);
+    } catch(err) { container.textContent=err.message; }
+  }
+  disposeMap() {
+    this.mapResize?.disconnect();
+    this.leafletMap?.remove();this.leafletMap=null;this.mapMarkers.clear();
+  }
+  fitMap() {
+    const nodes=this.mapNodes();
+    if(nodes.length && this.leafletMap) this.leafletMap.fitBounds(nodes.map(n=>[n.lat,n.lon]),{padding:[30,30],maxZoom:8});
+  }
+  updateMap() {
+    if(!this.leafletMap) return;
+    const nodes=this.mapNodes(),signature=JSON.stringify(nodes);
+    if(signature===this.mapSignature) return;
+    if(signature!==this.mapSignature) {
+      const keepOpen=this.mapPopupOpen;
+      for(const marker of this.mapMarkers.values()) marker.remove();
+      this.mapMarkers.clear();
+      for(const node of nodes) {
+        const marker=window.L.circleMarker([node.lat,node.lon],{radius:7,color:'#fff',weight:2,fillColor:'#269b68',fillOpacity:1}).addTo(this.leafletMap);
+        const popup=document.createElement('div');popup.className='repeater-popup';
+        const name=document.createElement('strong');name.textContent=node.name;
+        const coordinates=document.createElement('p');coordinates.textContent=`${node.lat.toFixed(5)}, ${node.lon.toFixed(5)}`;
+        const link=document.createElement('a');link.textContent='Open full map';link.target='_blank';link.rel='noopener';
+        link.href=`https://www.openstreetmap.org/?mlat=${node.lat}&mlon=${node.lon}#map=12/${node.lat}/${node.lon}`;
+        popup.append(name,coordinates,link);
+        marker.bindPopup(popup,{maxWidth:240,autoPan:true});
+        marker.on('click',()=>this.selectMapNode(node.id));
+        marker.on('popupopen',()=>{this.mapPopupOpen=true;});
+        marker.on('popupclose',()=>{this.mapPopupOpen=false;});
+        this.mapMarkers.set(node.id,marker);
+      }
+      this.mapSignature=signature;
+      if(keepOpen && this.mapMarkers.has(this.mapSelected)) this.mapMarkers.get(this.mapSelected).openPopup();
+    }
+    this.renderMapList();this.updateMapSelection();
+  }
+  renderMapList() {
+    const list=this.shadowRoot.getElementById('map-list');if(!list)return;
+    const nodes=this.mapNodes().filter(n=>n.name.toLowerCase().includes(this.mapQuery.toLowerCase())).sort((a,b)=>a.name.localeCompare(b.name));
+    list.innerHTML=nodes.map(n=>`<button data-map-node="${escapeHTML(n.id)}" class="map-row ${this.mapSelected===n.id?'selected':''}" aria-pressed="${this.mapSelected===n.id}"><strong>${escapeHTML(n.name)}</strong><small>${n.lat.toFixed(5)}, ${n.lon.toFixed(5)}</small></button>`).join('') || '<p class="empty-small">No repeaters with matching GPS</p>';
+    list.querySelectorAll('[data-map-node]').forEach(el=>el.onclick=()=>this.selectMapNode(el.dataset.mapNode));
+  }
+  updateMapSelection() {
+    const selected=this.mapNodes().find(n=>n.id===this.mapSelected);
+    const caption=this.shadowRoot.getElementById('map-selection');
+    if(caption) caption.textContent=selected?`${selected.name} · ${selected.lat.toFixed(5)}, ${selected.lon.toFixed(5)}`:`${this.mapNodes().length} repeaters with advertised GPS`;
+    for(const [id,marker] of this.mapMarkers) marker.setStyle({fillColor:id===this.mapSelected?'#159ee8':'#269b68',radius:id===this.mapSelected?10:7});
+  }
+  selectMapNode(id,open=true) {
+    const node=this.mapNodes().find(n=>n.id===id);if(!node||!this.leafletMap)return;
+    this.mapSelected=id;
+    this.leafletMap.flyTo([node.lat,node.lon],12,{duration:.45});
+    if(open) this.mapMarkers.get(id)?.openPopup();
+    this.renderMapList();this.updateMapSelection();
+    const row=[...this.shadowRoot.querySelectorAll('[data-map-node]')].find(el=>el.dataset.mapNode===id);
+    const list=this.shadowRoot.getElementById('map-list');
+    if(row && list) list.scrollTop=Math.max(0,row.offsetTop-list.offsetTop-list.clientHeight/2);
+  }
+  openPinDialog() {
+    if(this.pinDialogOpen) return;
+    this.pinDialogOpen=true;
+    const dialog=document.createElement('dialog');dialog.id='pin-dialog';
+    dialog.innerHTML=`<form id="pin-form"><h2>Update radio PIN</h2><p>Enter the six-digit PIN currently configured on your Heltec. Saving reconnects this bridge only.</p><label for="radio-pin">Radio PIN</label><input id="radio-pin" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="6" pattern="[0-9]{6}" required><p id="pin-error" class="error" role="alert"></p><div class="actions"><button type="button" id="pin-cancel">Cancel</button><button type="submit" class="primary" id="pin-save">Save & reconnect</button></div></form>`;
+    this.shadowRoot.append(dialog);dialog.showModal();
+    const close=()=>{dialog.querySelector('input').value='';this.pinDialogOpen=false;dialog.remove();};
+    dialog.oncancel=event=>{event.preventDefault();close();};
+    dialog.querySelector('#pin-cancel').onclick=close;
+    dialog.querySelector('#pin-form').onsubmit=async event=>{
+      event.preventDefault();const input=dialog.querySelector('#radio-pin'),button=dialog.querySelector('#pin-save');
+      button.disabled=true;input.disabled=true;
+      try {
+        const result=await this._hass.callWS({type:'meshcore_sender/update_radio_pin',entry_id:this.entryId,password:input.value});
+        close();this.notice=result.message;this.updateStatus();await this.refresh();
+      } catch(err) {input.value='';input.disabled=false;button.disabled=false;dialog.querySelector('#pin-error').textContent=err.message||'PIN update failed';input.focus();}
+    };
+    dialog.querySelector('input').focus();
+  }
   render() {
     const oldScroll = this.shadowRoot.querySelector('.messages');
     const bottom = !oldScroll || oldScroll.scrollHeight-oldScroll.scrollTop-oldScroll.clientHeight < 60;
     const scroll = oldScroll?.scrollTop || 0;
-    this.shadowRoot.innerHTML = `<style>${MeshCoreWorkspace.styles}</style><div class="shell"><header class="app-heading"><ha-menu-button id="ha-menu"></ha-menu-button><h1>MeshCore</h1><div id="connection" class="connection"></div><button class="icon" id="refresh" title="Refresh workspace" aria-label="Refresh workspace">${icon('refresh')}</button></header>
+    this.disposeMap();
+    this.shadowRoot.innerHTML = `<style>${MeshCoreWorkspace.styles}</style><div class="shell"><header class="app-heading"><ha-menu-button id="ha-menu"></ha-menu-button><h1>MeshCore</h1><div id="connection" class="connection"></div>${this.data?.pin_update_supported?`<button class="icon" id="radio-settings" title="Update radio PIN" aria-label="Update radio PIN">${icon('key-outline')}</button>`:''}<button class="icon" id="refresh" title="Refresh workspace" aria-label="Refresh workspace">${icon('refresh')}</button></header>
       ${this.data?.entries.length>1?`<label class="radio-picker">Radio<select id="radio">${this.data.entries.map(e=>`<option value="${escapeHTML(e.id)}" ${e.id===this.entryId?'selected':''}>${escapeHTML(e.name)}</option>`).join('')}</select></label>`:''}
-      <nav aria-label="MeshCore views">${[['inbox','message-text-outline','Inbox'],['compose','square-edit-outline','Compose'],['range','signal-distance-variant','Range'],['contacts','account-multiple-outline','Contacts']].map(([id,i,label])=>`<button data-view="${id}" aria-current="${this.view===id?'page':'false'}" class="${this.view===id?'active':''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="feedback" role="status"></div><main>${!this.data?'<div class="loading">Connecting to your radio workspace…</div>':!this.data.history_supported?'<section class="tool"><h2>Native radio connection required</h2><p>This inbox workspace currently supports the Bluetooth and BLE bridge connections. Existing server-mode controls remain available on the device page.</p></section>':this.view==='inbox'?this.inbox():this.view==='compose'?this.compose():this.view==='range'?this.rangeView():this.contacts()}</main></div>`;
+      <nav aria-label="MeshCore views">${[['inbox','message-text-outline','Inbox'],['compose','square-edit-outline','Compose'],['range','signal-distance-variant','Range'],['contacts','account-multiple-outline','Contacts'],['map','map-outline','Map']].map(([id,i,label])=>`<button data-view="${id}" aria-current="${this.view===id?'page':'false'}" class="${this.view===id?'active':''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="feedback" role="status"></div><main>${!this.data?'<div class="loading">Connecting to your radio workspace…</div>':!this.data.history_supported?'<section class="tool"><h2>Native radio connection required</h2><p>This inbox workspace currently supports the Bluetooth and BLE bridge connections. Existing server-mode controls remain available on the device page.</p></section>':this.view==='inbox'?this.inbox():this.view==='compose'?this.compose():this.view==='range'?this.rangeView():this.view==='map'?this.mapView():this.contacts()}</main></div>`;
     this.bind(); this.updateStatus(); this.updateRange(); this.byteCount();
     const messages = this.shadowRoot.querySelector('.messages');
     if (messages) messages.scrollTop = bottom ? messages.scrollHeight : scroll;
+    if(this.view==='map') this.initMap();
   }
   bind() {
     const root = this.shadowRoot;
@@ -140,6 +257,9 @@ class MeshCoreWorkspace extends HTMLElement {
     root.querySelectorAll('.target input').forEach(el=>el.onchange=()=>{el.checked?this.targets.add(el.value):this.targets.delete(el.value);this.render();});
     const on = (id,event,handler) => { const el=root.getElementById(id); if(el) el[event]=handler; };
     on('refresh','onclick',()=>this.refresh());
+    on('radio-settings','onclick',()=>this.openPinDialog());
+    on('map-fit','onclick',()=>this.fitMap());
+    on('map-search','oninput',e=>{this.mapQuery=e.target.value;this.renderMapList();});
     on('radio','onchange',e=>{this.entryId=e.target.value;this.selected=null;this.targets.clear();this.signature=null;this.refresh();});
     on('back','onclick',()=>{this.selected=null;this.render();});
     for(const id of ['new-message','compose-empty']) on(id,'onclick',()=>{this.view='compose';this.render();});
@@ -204,6 +324,7 @@ class MeshCoreWorkspace extends HTMLElement {
     progress.value=r.running? r.next_due_at?Math.max(0,Math.min(1,1-seconds/r.interval)):1:0;
   }
   static styles = `
+    .map-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;margin-top:16px}.map-sidebar{min-width:0}.map-sidebar>input{width:100%;margin-bottom:10px}.map-list{height:470px;overflow:auto;position:relative}.map-row{display:block;text-align:left;width:100%;border:0;border-bottom:1px solid var(--divider-color);border-radius:0;padding:12px}.map-row strong{display:block;overflow-wrap:anywhere}.map-row small{display:block;color:var(--secondary-text-color);margin-top:6px}.map-row.selected{background:var(--secondary-background-color);box-shadow:inset 3px 0 var(--primary-color)}#map-canvas{height:520px;width:100%;border-radius:6px;z-index:0;background:#dce4dc}.map-selection{padding:12px 0;color:var(--secondary-text-color);font-size:12px;overflow-wrap:anywhere}.map-note{font-size:12px}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card-background-color,#fff);color:var(--primary-text-color,#222)}.leaflet-popup-content p{margin:8px 0}.leaflet-popup-content a{color:var(--primary-color,#0288d1)}.leaflet-container{font:13px Arial,sans-serif}.leaflet-popup-close-button{min-height:24px!important;padding:0!important}.repeater-popup strong{display:block;overflow-wrap:anywhere}dialog{max-width:420px;width:calc(100% - 32px);padding:24px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color,#fff);color:var(--primary-text-color)}dialog::backdrop{background:rgba(0,0,0,.45)}dialog p{color:var(--secondary-text-color)}dialog label{display:block;margin-bottom:8px}dialog input{width:100%;font-size:18px}dialog .actions{justify-content:flex-end}nav .range-indicator{width:6px;height:6px}
     :host { display:block;height:100%;color:var(--primary-text-color,#202124);background:var(--primary-background-color,#f5f6f8);font:14px var(--paper-font-body1_-_font-family,Roboto,Arial,sans-serif);letter-spacing:0; }
     .shell{background:var(--primary-background-color,#f5f6f8);min-height:100%}
     *{box-sizing:border-box}button,input,textarea,select{font:inherit;letter-spacing:0}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--primary-color,#03a9f4);outline-offset:2px}ha-icon{--mdc-icon-size:22px;flex:none}h1{font-size:20px;margin:0}h2{font-size:18px;margin:0}h3{font-size:13px;margin:20px 0 10px;color:var(--secondary-text-color);font-weight:600}p{line-height:1.5}button{border:1px solid var(--divider-color,#ddd);border-radius:6px;background:transparent;color:inherit;min-height:40px;padding:8px 14px;display:inline-flex;align-items:center;justify-content:center;gap:8px}button.primary{background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff);border-color:transparent}button.icon{padding:8px;width:40px;height:40px;flex:none;border:0}input,textarea,select{border:1px solid var(--divider-color,#ddd);border-radius:6px;padding:11px;color:inherit;background:var(--card-background-color,#fff);min-width:0}textarea{width:100%;resize:vertical;line-height:1.45}input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary-color)}
@@ -211,7 +332,7 @@ class MeshCoreWorkspace extends HTMLElement {
     nav{display:flex;border-bottom:1px solid var(--divider-color,#ddd);gap:8px;margin-bottom:16px}nav button{border:0;border-radius:0;padding:12px 18px;min-height:48px;border-bottom:3px solid transparent}nav button.active{border-bottom-color:var(--primary-color);color:var(--primary-color)}.feedback:empty{display:none}.feedback{padding:12px 0;color:var(--secondary-text-color)}.error{color:var(--error-color,#db4437)!important}.radio-picker{display:flex;align-items:center;gap:12px;padding-bottom:8px}.radio-picker select{max-width:100%}main{min-width:0}.loading{padding:48px;text-align:center}
     .inbox{display:grid;grid-template-columns:300px minmax(0,1fr);height:calc(100dvh - 160px);min-height:400px;border:1px solid var(--divider-color,#ddd);border-radius:6px;overflow:hidden;background:var(--card-background-color,#fff)}.conversation-list{border-right:1px solid var(--divider-color,#ddd);display:flex;flex-direction:column;min-height:0;min-width:0}.list-heading{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--divider-color,#ddd)}.list-heading h2{font-size:16px}.list-heading>span{color:var(--secondary-text-color)}.list-heading button{margin-left:auto}.conversation-items{overflow:auto}.conversation{display:block;text-align:left;width:100%;min-height:76px;padding:14px 16px;border:0;border-radius:0;border-bottom:1px solid var(--divider-color,#ddd)}.conversation.selected{background:var(--secondary-background-color,#edf4f7);box-shadow:inset 3px 0 var(--primary-color)}.conversation-top{display:flex;align-items:center;gap:10px}.conversation-top strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.conversation time{font-size:11px;color:var(--secondary-text-color);white-space:nowrap}.preview{display:block;margin-top:7px;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.chat{display:flex;flex-direction:column;min-width:0;min-height:0}.chat-heading{display:flex;align-items:center;gap:10px;padding:16px 20px;flex:none;border-bottom:1px solid var(--divider-color,#ddd)}.chat-heading h2{overflow-wrap:anywhere}.chat-heading span{display:block;font-size:12px;color:var(--secondary-text-color);margin-top:5px}.mobile-back{display:none!important}.channel-note{padding:10px 20px;background:var(--secondary-background-color);color:var(--secondary-text-color);font-size:12px;line-height:1.4}.messages{flex:1;overflow:auto;padding:20px;overscroll-behavior:contain}.message{margin-bottom:18px;max-width:85%;width:fit-content}.message.out{margin-left:auto}.message-meta{color:var(--secondary-text-color);font-size:11px;margin-bottom:5px}.message.out .message-meta,.message.out .delivery{text-align:right}.bubble{padding:10px 14px;background:var(--secondary-background-color,#edf0f3);border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}.message.out .bubble{background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff)}.delivery{color:var(--secondary-text-color);font-size:11px;margin-top:5px}.delivered{color:#249a62}.failed{color:var(--error-color,#db4437)}.reply{display:flex;align-items:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--divider-color,#ddd);flex:none}.reply textarea{flex:1;min-height:48px;max-height:140px}.reply button{height:48px}.unknown-note{padding:0 20px;font-size:12px}.empty-chat{align-items:center;justify-content:center;text-align:center;color:var(--secondary-text-color);padding:24px;gap:14px}.empty-chat ha-icon{--mdc-icon-size:40px}.empty-chat p{margin:0}.empty-small{padding:20px;color:var(--secondary-text-color)}
     .tool{padding:8px 0 24px}.tool-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.65fr);gap:32px;margin-top:20px}.field-label{display:block;margin-bottom:8px;color:var(--secondary-text-color)}.picker-head{display:flex;gap:8px;margin-bottom:10px}.picker-head input{flex:1;width:100%}.picker-head select{width:82px}.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}.filters button{min-height:36px;padding:6px 10px;font-size:12px}.filters .active{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent}.targets{border:1px solid var(--divider-color,#ddd);border-radius:6px;overflow:auto;max-height:320px;background:var(--card-background-color,#fff)}.target{display:flex;align-items:center;border-bottom:1px solid var(--divider-color,#ddd);padding:2px 8px;min-height:48px}.target:last-child{border:0}.target label{display:flex;gap:10px;align-items:center;flex:1;min-width:0;cursor:pointer;padding:6px 0}.target label span{flex:1;overflow-wrap:anywhere}.target small{font-size:10px;color:var(--secondary-text-color);text-transform:uppercase}.favorite{color:var(--secondary-text-color)}.selection{display:flex;flex-wrap:wrap;gap:6px;color:var(--secondary-text-color);padding:12px 0;min-height:44px;font-size:12px}.selection>span{display:flex;align-items:center;padding-left:8px;background:var(--secondary-background-color);border-radius:4px}.selection button{width:28px!important;height:28px!important;min-height:28px;padding:4px}.selection ha-icon{--mdc-icon-size:16px}.info{border-left:1px solid var(--divider-color);padding-left:24px;color:var(--secondary-text-color)}.info h3{margin-top:0}.byte-count{font-size:12px;color:var(--secondary-text-color);margin-top:6px}.range-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.range-fields label{display:flex;flex-direction:column;gap:8px;color:var(--secondary-text-color);font-size:12px}.range-fields input{width:100%;font-size:16px}.section-title{display:flex;align-items:center;justify-content:space-between}.live{display:flex;align-items:center;gap:6px;color:var(--secondary-text-color);font-size:12px}.actions{display:flex;gap:8px}.range-stats{min-width:0;border-left:1px solid var(--divider-color);padding-left:24px}.range-stats h3{margin-top:0}.range-stats p{color:var(--secondary-text-color);font-size:12px;overflow-wrap:anywhere}.totals{display:flex;align-items:baseline;gap:8px;color:var(--secondary-text-color)}.totals strong{font-size:28px;color:var(--primary-text-color)}progress{width:100%;height:8px;accent-color:var(--primary-color);margin:4px 0 20px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{text-align:right;padding:10px 4px;border-bottom:1px solid var(--divider-color);overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left;max-width:180px}th{color:var(--secondary-text-color);font-weight:500}.range-log{max-height:250px;overflow:auto;border-top:1px solid var(--divider-color)}.range-log>div{display:grid;grid-template-columns:70px minmax(0,1fr) minmax(0,1fr);gap:12px;padding:10px 0;font-size:12px;border-bottom:1px solid var(--divider-color);overflow-wrap:anywhere}.range-log time,.range-log span,.muted{color:var(--secondary-text-color)}
-    @media(max-width:700px){.shell{padding:0 12px calc(16px + env(safe-area-inset-bottom))}.app-heading{height:56px;gap:8px}.app-heading>ha-icon{display:none}h1{font-size:18px}.contact-count{display:none}.connection{font-size:12px}nav{gap:0;margin-bottom:12px}nav button{flex:1;min-width:0;padding:10px 4px;gap:5px;font-size:12px}nav ha-icon{--mdc-icon-size:18px}.inbox{display:block;height:calc(100dvh - 140px);min-height:360px}.conversation-list{height:100%;border-right:0}.chat{height:100%;display:none}.inbox.has-conversation .conversation-list{display:none}.inbox.has-conversation .chat{display:flex}.mobile-back{display:inline-flex!important}.chat-heading{padding:10px}.chat-heading h2{font-size:16px}.messages{padding:14px}.message{max-width:90%}.reply{padding:10px;gap:8px}.reply textarea{font-size:16px;resize:none}.reply button{padding:10px;min-width:48px}.reply button span{display:none}.channel-note{padding:10px 14px}.tool-grid{grid-template-columns:minmax(0,1fr);gap:24px}.info,.range-stats{border-left:0;border-top:1px solid var(--divider-color);padding:18px 0 0}.info{display:none}.tool>h2{font-size:18px}.targets{max-height:280px}.picker-head input{font-size:16px}.filters{gap:5px}.filters button{padding:8px;font-size:12px;min-height:40px}.range-fields input{font-size:16px}.range-log>div{grid-template-columns:62px minmax(0,1fr);gap:6px}.range-log>div span{grid-column:2}.range-stats h3{margin:0 0 14px}.radio-picker select{flex:1}}
+    @media(max-width:700px){.map-layout{grid-template-columns:minmax(0,1fr);gap:12px}#map-canvas{height:340px}.map-list{height:240px}.map-sidebar input{font-size:16px}.shell{padding:0 12px calc(16px + env(safe-area-inset-bottom))}.app-heading{height:56px;gap:4px}.app-heading>ha-icon{display:none}h1{font-size:18px}.contact-count{display:none}.connection{font-size:11px}nav{gap:0;margin-bottom:12px}nav button{flex:1;min-width:0;padding:10px 2px;gap:5px;font-size:12px;flex-direction:column}nav ha-icon{--mdc-icon-size:18px}nav .range-indicator{position:absolute;margin-left:34px;margin-top:-20px}.inbox{display:block;height:calc(100dvh - 160px);min-height:360px}.conversation-list{height:100%;border-right:0}.chat{height:100%;display:none}.inbox.has-conversation .conversation-list{display:none}.inbox.has-conversation .chat{display:flex}.mobile-back{display:inline-flex!important}.chat-heading{padding:10px}.chat-heading h2{font-size:16px}.messages{padding:14px}.message{max-width:90%}.reply{padding:10px;gap:8px}.reply textarea{font-size:16px;resize:none}.reply button{padding:10px;min-width:48px}.reply button span{display:none}.channel-note{padding:10px 14px}.tool-grid{grid-template-columns:minmax(0,1fr);gap:24px}.info,.range-stats{border-left:0;border-top:1px solid var(--divider-color);padding:18px 0 0}.info{display:none}.tool>h2{font-size:18px}.targets{max-height:280px}.picker-head input{font-size:16px}.filters{gap:5px}.filters button{padding:8px;font-size:12px;min-height:40px}.range-fields input{font-size:16px}.range-log>div{grid-template-columns:62px minmax(0,1fr);gap:6px}.range-log>div span{grid-column:2}.range-stats h3{margin:0 0 14px}.radio-picker select{flex:1}}
   `;
 }
 customElements.define('meshcore-workspace', MeshCoreWorkspace);
