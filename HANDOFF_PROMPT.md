@@ -18,8 +18,27 @@ CURRENT HOME ASSISTANT WORKSPACE CHECKPOINT (0.6.0)
   incoming radio text to them. A separate Codex conversation subentry named
   `MeshCore AI` was created through the HA config flow using the existing login,
   no tools, default gpt-5.1-codex model and low reasoning. Other agents unchanged.
-- 0.6.0 deployment and AI-preview verification are pending until recorded below.
-  Fresh pre-update HA backup: `f8aaf3f1`. Never restart during an active range test.
+- Deployment completed 2026-10-06: HACS installed `a662b2c` / 0.6.0 after
+  verified backup `f8aaf3f1`, core check and restart. Panel registers version
+  `workspace.js?v=0.6.0`; radio available with 127 contacts/channels, 38 saved
+  messages, range stopped. Latest test count: 71 Python checks, geography,
+  four-width Chromium fixtures, live Chromium/WebKit Commands at 390/1366px.
+  No live radio transmissions, PIN changes or remote Start/Stop tests performed.
+- Codex provider preview failed because its existing OAuth refresh returns 401.
+  Reauthorization is required; do not claim the subscription agent works yet.
+  Original Codex/Google household agents retain their home-control permissions
+  and are correctly blocked by MeshCore. Claude Terminal remains separate.
+- Created a separate `MeshCore AI Google` conversation subentry using the existing
+  Google credentials and no home-control APIs, through HA's supported config flow.
+  Its live AI preview successfully translated "Can you keep checking OptimusPrime
+  every half minute?" into start/dm:OptimusPrime/30/ping with range still stopped.
+  This agent is selected in saved remote settings, but remote control is DISABLED
+  with no approved controllers. User must favorite/select/enable the desired
+  contact. Permissions have not been inferred from old Mac advertised names.
+- Next deliberate test: favorite OptimusPrime, enable it in Commands and Save;
+  send a fuzzy range request, confirm with 1, inspect Remote starter/ACK stats,
+  then request stop and confirm. Also test cancel and permissions after HA restart
+  when no range test is active. Reauthorize Codex separately before selecting it.
 - Rollout correction: user's existing Safari session did not show Sort after
   the file-only update. Once the range test was confirmed stopped, the pending
   HA restart was completed (backup `45a61ce6`). The registered module URL is

@@ -226,6 +226,18 @@ Live radio confirmation/start/stop must be tested deliberately by the user after
 enabling a controller. Browser fixtures and AI preview are safe checks, not a claim
 that remote delivery or execution has been field-tested.
 
+Deployment verified 2026-10-06: HACS revision `a662b2c`, version 0.6.0, HA backup
+`f8aaf3f1`, core check and restart. Radio reconnected, range stopped. 71 Python
+checks, geography tests, four-width browser fixtures and live Chromium/WebKit
+Commands checks at 390/1366px passed. The separate tool-free **MeshCore AI Google**
+agent is selected, using existing HA credentials. Its live preview converted
+"Can you keep checking OptimusPrime every half minute?" to a 30-second test
+proposal without sending radio traffic. Remote control remains disabled with no
+approved controllers until the user opts in. The separate **MeshCore AI** Codex
+agent is available but its existing login cannot refresh (HTTP 401); renew that
+login before using it. Household assistants, radio PIN and bridge firmware were
+not changed.
+
 Verification: local Python tests cover incoming messages during connection startup,
 history bounds/replay handling, delivery semantics, authenticated starter attribution,
 read-only snapshots and offline history access. `tests/workspace_browser.cjs` checks
