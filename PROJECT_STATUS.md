@@ -5,6 +5,15 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
 
+- 0.6.4 read-only self-telemetry diagnostic prepared for deployment to answer
+  whether the actual Heltec reports temperature/humidity. Admin-only websocket
+  `meshcore_sender/telemetry` requires an explicit native entry, uses the existing
+  connection lock, rejects running/finishing tests, bounds the read to ten seconds
+  and verifies the returned public-key prefix against the connected radio.
+  Only channel/type/value for finite temperature/humidity/voltage is returned;
+  GPS and key identifiers are omitted. No extra sensors, firmware changes, LoRa
+  packets or periodic telemetry polling. Current live version remains 0.6.3 until
+  verified below; frontend remains v=0.6.3 because there is no UI change.
 - Deployed and verified: 0.6.3 battery-voltage monitoring. Native
   bridge/BLE reads `get_bat()` / BATTERY `level` (millivolts) once per minute under
   the existing transport lock; five-second timeout, invalid/stale handling, HA

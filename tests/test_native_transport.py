@@ -26,6 +26,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                                      get_channel=AsyncMock(return_value=SimpleNamespace(
                 type="channel", payload={"channel_name": "Actual channel"}))),
             subscribe=Mock(), start_auto_message_fetching=AsyncMock(),
+            self_info={"public_key": "a" * 64},
             disconnect=AsyncMock(), contacts={}, is_connected=True,
         )
         self.tcp = Mock()
@@ -37,7 +38,8 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
                      "TCPConnection": self.tcp, "ProxyBLEConnection": self.ble,
                      "MeshCore": self.sdk,
                      "EventType": SimpleNamespace(ERROR="error", CONTACT_MSG_RECV="dm",
-                                                  CHANNEL_MSG_RECV="channel", BATTERY="battery")}
+                                                  CHANNEL_MSG_RECV="channel", BATTERY="battery",
+                                                  TELEMETRY_RESPONSE="telemetry")}
         # Load the production client class without importing Home Assistant.
         source = ast.parse((ROOT / "bluetooth_client.py").read_text())
         node = next(n for n in source.body if isinstance(n, ast.ClassDef)
@@ -131,6 +133,39 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.radio.commands.get_bat.side_effect = asyncio.CancelledError()
         with self.assertRaises(asyncio.CancelledError):
             await client.request("GET", "/api/health")
+
+    async def test_self_telemetry_preserves_channels_and_excludes_other_data(self):
+        self.radio.commands.get_self_telemetry = AsyncMock(return_value=SimpleNamespace(type="telemetry", payload={
+            "pubkey_pre": "a" * 12, "lpp": [
+                {"channel": 1, "type": "temperature", "value": 32.5},
+                {"channel": 2, "type": "humidity", "value": 45},
+                {"channel": 1, "type": "voltage", "value": 4.2},
+                {"channel": 1, "type": "gps", "value": [1, 2, 3]},
+                {"channel": 3, "type": "temperature", "value": float("nan")}] }))
+        client = self.Client(self.hass, "bridge", host="bridge")
+        result = await client.request("GET", "/api/telemetry")
+        self.assertEqual([m["type"] for m in result["measurements"]], ["temperature", "humidity", "voltage"])
+        self.assertEqual(result["measurements"][1]["channel"], 2)
+        self.assertNotIn("pubkey_pre", result)
+        self.assertEqual(client.range.state["sent"], 0)
+
+    async def test_self_telemetry_rejects_other_radio_and_wrong_events(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        self.radio.commands.get_self_telemetry = AsyncMock(return_value=SimpleNamespace(type="telemetry", payload={
+            "pubkey_pre": "b" * 12, "lpp": []}))
+        with self.assertRaisesRegex(RuntimeError, "identify this radio"):
+            await client.request("GET", "/api/telemetry")
+        self.radio.commands.get_self_telemetry.return_value = SimpleNamespace(type="error")
+        with self.assertRaisesRegex(RuntimeError, "did not return"):
+            await client.request("GET", "/api/telemetry")
+
+    async def test_self_telemetry_refuses_active_tests_without_querying(self):
+        client = self.Client(self.hass, "bridge", host="bridge")
+        self.radio.commands.get_self_telemetry = AsyncMock()
+        client.range.state["running"] = True
+        with self.assertRaisesRegex(RuntimeError, "Stop the range test"):
+            await client.request("GET", "/api/telemetry")
+        self.radio.commands.get_self_telemetry.assert_not_awaited()
 
     async def test_failed_bridge_handshake_cleans_up(self):
         self.radio.connect.side_effect = ConnectionError("Connection refused")

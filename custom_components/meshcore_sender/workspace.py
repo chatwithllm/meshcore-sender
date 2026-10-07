@@ -183,6 +183,24 @@ async def websocket_workspace(hass, connection, msg):
 
 
 @websocket_api.websocket_command({
+    vol.Required("type"): "meshcore_sender/telemetry",
+    vol.Required("entry_id"): str,
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_telemetry(hass, connection, msg):
+    chosen = hass.data.get(DOMAIN, {}).get(msg["entry_id"])
+    if chosen is None or not hasattr(chosen.client, "mc"):
+        connection.send_error(msg["id"], "invalid_entry", "Choose a native MeshCore radio")
+        return
+    try:
+        result = await chosen.client.request("GET", "/api/telemetry")
+        connection.send_result(msg["id"], result)
+    except Exception:
+        connection.send_error(msg["id"], "telemetry_failed", "Self telemetry unavailable. Check the radio connection and stop any running test.")
+
+
+@websocket_api.websocket_command({
     vol.Required("type"): "meshcore_sender/update_radio_pin",
     vol.Required("entry_id"): str,
     # HA's websocket exception logger redacts the standard password field.
@@ -212,6 +230,7 @@ async def async_setup_workspace(hass):
             StaticPathConfig("/meshcore_sender_static", str(Path(__file__).parent / "www"), False)
         ])
         websocket_api.async_register_command(hass, websocket_workspace)
+        websocket_api.async_register_command(hass, websocket_telemetry)
         websocket_api.async_register_command(hass, websocket_update_radio_pin)
         state["registered"] = True
     if not state.get("panel"):

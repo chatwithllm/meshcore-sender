@@ -1,5 +1,21 @@
 # Home Assistant
 
+## Self-Telemetry Diagnostic (0.6.4)
+
+An admin can request `meshcore_sender/telemetry` over HA's authenticated websocket
+with an explicit native radio `entry_id`. This one-shot read uses the existing
+HA-owned radio connection, does not send LoRa traffic and refuses running or
+finishing range tests. It verifies the radio's identity, has a ten-second timeout
+and returns only finite temperature/humidity/voltage values with their telemetry
+channels. It does not add periodic polling or new sensor entities.
+
+MeshCore's self channel 1 can contain built-in MCU temperature, which is not
+ambient air or battery temperature. External environment sensors use additional
+channels. A successful response without a humidity field means none was reported,
+not zero humidity. A failed read must not be interpreted as absence of a sensor.
+The frontend module stays v=0.6.3 because this diagnostic has no UI changes.
+See PROJECT_STATUS.md for deployment and actual live telemetry results.
+
 ## Battery Monitoring (0.6.3)
 
 The native Bluetooth/BLE-bridge integration reads the connected radio's battery

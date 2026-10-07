@@ -1,6 +1,11 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- 0.6.4 read-only self-telemetry diagnostic prepared: authenticated admin websocket
+  `meshcore_sender/telemetry`, explicit native entry, own-radio prefix check,
+  ten-second timeout, no active-test disruption or second connection. Returns
+  temperature/humidity/voltage by channel, no GPS/key data. It adds no sensor or
+  periodic telemetry poll. See PROJECT_STATUS.md for deployment/live results.
 - 0.6.3 battery monitoring deployed (`388eccd`): one-minute local
   `get_bat()` ADC reads over HA's existing radio transport, voltage measurement
   sensor/history and workspace status. Backup `f37ba470`, config check and restart

@@ -247,6 +247,24 @@ class NativeMeshCoreClient:
             async with self.lock:
                 await self._ensure_connected()
                 nodes = self._nodes()
+                if path == "/api/telemetry":
+                    if self.range.state["running"] or self.range.stopping:
+                        raise MeshCoreError("Stop the range test before reading diagnostic telemetry")
+                    event = await asyncio.wait_for(self.mc.commands.get_self_telemetry(), timeout=10)
+                    if event is None or event.type != EventType.TELEMETRY_RESPONSE:
+                        raise MeshCoreError("Radio did not return self telemetry")
+                    own_key = self.mc.self_info.get("public_key", "")
+                    if not own_key or event.payload.get("pubkey_pre") != own_key[:12]:
+                        raise MeshCoreError("Telemetry did not identify this radio")
+                    measurements = event.payload.get("lpp")
+                    if not isinstance(measurements, list):
+                        raise MeshCoreError("Radio returned invalid telemetry")
+                    return {"sampled_at": time.time(), "measurements": [
+                        {"channel": item.get("channel"), "type": item["type"], "value": item["value"]}
+                        for item in measurements if isinstance(item, dict)
+                        and item.get("type") in ("temperature", "humidity", "voltage")
+                        and not isinstance(item.get("value"), bool)
+                        and isinstance(item.get("value"), (int, float)) and math.isfinite(item["value"])]}
                 if path == "/api/health":
                     return {"radio_ok": True, "nodes": len(nodes), "last_message": self.last_message,
                             "battery": await self._battery_status()}

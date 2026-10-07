@@ -11,6 +11,41 @@ ROOT = Path(__file__).resolve().parents[1] / "custom_components/meshcore_sender"
 source = ast.parse((ROOT / "workspace.py").read_text())
 handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef)
                and n.name == "websocket_workspace")
+telemetry_handler = next(n for n in source.body if isinstance(n, ast.AsyncFunctionDef)
+                        and n.name == "websocket_telemetry")
+
+
+class TelemetryWorkspaceTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        node = copy.deepcopy(telemetry_handler)
+        node.decorator_list = []
+        namespace = {"DOMAIN": "meshcore_sender"}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "telemetry_handler", "exec"), namespace)
+        self.handler = namespace["websocket_telemetry"]
+        self.client = SimpleNamespace(mc=None, request=AsyncMock(return_value={"measurements": []}))
+        self.hass = SimpleNamespace(data={"meshcore_sender": {"entry": SimpleNamespace(client=self.client)}})
+        self.connection = SimpleNamespace(send_result=Mock(), send_error=Mock())
+
+    def test_telemetry_is_admin_only(self):
+        decorators = [ast.unparse(n) for n in telemetry_handler.decorator_list]
+        self.assertIn("websocket_api.require_admin", decorators)
+
+    async def test_native_query_uses_existing_client(self):
+        await self.handler(self.hass, self.connection, {"id": 1, "entry_id": "entry"})
+        self.client.request.assert_awaited_once_with("GET", "/api/telemetry")
+        self.connection.send_result.assert_called_once_with(1, {"measurements": []})
+
+    async def test_unknown_entry_and_server_are_rejected(self):
+        await self.handler(self.hass, self.connection, {"id": 1, "entry_id": "unknown"})
+        self.client.request.assert_not_awaited()
+        del self.client.mc
+        await self.handler(self.hass, self.connection, {"id": 2, "entry_id": "entry"})
+        self.client.request.assert_not_awaited()
+
+    async def test_errors_do_not_echo_transport_details(self):
+        self.client.request.side_effect = RuntimeError("private transport data")
+        await self.handler(self.hass, self.connection, {"id": 1, "entry_id": "entry"})
+        self.assertNotIn("private transport data", str(self.connection.send_error.call_args))
 
 
 class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
