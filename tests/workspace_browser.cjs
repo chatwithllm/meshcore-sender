@@ -12,6 +12,15 @@ const path = require('node:path');
     await page.route('http://meshcore.test/',route=>route.fulfill({contentType:'text/html',body:`<style>body{margin:0;--primary-background-color:#101418;--card-background-color:#1c2228;--secondary-background-color:#283039;--primary-text-color:#eef2f5;--secondary-text-color:#a7b1ba;--primary-color:#369cec;--text-primary-color:#fff;--divider-color:#374049}</style><meshcore-workspace></meshcore-workspace>`}));
     await page.route('**/meshcore_sender_static/vendor/*',route=>route.fulfill({path:path.resolve(__dirname,'../custom_components/meshcore_sender/www/vendor',route.request().url().split('/').pop())}));
     await page.goto('http://meshcore.test/');
+    await page.evaluate(()=>{
+      const policy=document.createElement('meta');
+      policy.name='referrer';policy.content='no-referrer';document.head.append(policy);
+    });
+    const tileReferrers=[];
+    await page.route('https://tile.openstreetmap.org/**',async route=>{
+      tileReferrers.push(await route.request().headerValue('referer'));
+      await route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64')});
+    });
     await page.addScriptTag({path:path.resolve(__dirname,'../custom_components/meshcore_sender/www/workspace.js')});
     await page.evaluate(() => {
       window.calls = [];
@@ -210,6 +219,9 @@ const path = require('node:path');
     assert.ok(listHeight>=(width<=700?360:480),`Taller list at ${width}px`);
     await page.screenshot({path:`/tmp/meshcore-workspace-map-${width}.png`,fullPage:true});
     assert.ok(await page.locator('.leaflet-tile').evaluateAll(images=>images.some(i=>i.complete&&i.naturalWidth>0)),'OSM tiles must render');
+    assert.ok(tileReferrers.length>0,'Map must request tiles');
+    assert.ok(tileReferrers.every(referrer=>referrer==='http://meshcore.test/'),'Tiles must send only the origin despite the page no-referrer policy');
+    assert.ok(await page.locator('.leaflet-tile').evaluateAll(images=>images.every(i=>i.referrerPolicy==='strict-origin')));
     await page.close();
   }
   await browser.close();

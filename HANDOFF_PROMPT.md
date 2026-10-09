@@ -1,6 +1,18 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- 0.7.2 map fix: Leaflet tile images use strict-origin to meet OSM identification
+  requirements under HA's no-referrer page policy. Frontend cache key v=0.7.2.
+  Tests intercept tiles and verify origin-only Referer; see PROJECT_STATUS.md
+  for deployment outcome. No global HA header change or radio settings changes.
+- 2026-10-09 post-login validation: BlairOneW accepted the user's password with
+  administrator permissions. Safe status/get tx/neighbors all succeeded via HA:
+  4.185 V, uptime 8702 s, RSSI -51 dBm, SNR 12 dB, queue 0, tx 22 dBm,
+  zero returned neighbors. HA measurement entities populated and online on;
+  six cumulative successes/three failures. No code deployment/restart/settings
+  change needed. Login alone does not retrieve measurements; press Status next.
+  Firmware/board/telemetry/trace remain pending, cached route still unknown.
+  Earlier timeout notes below are historical, not the current acceptance state.
 - 2026-10-09: 0.7.0 remote repeater admin implemented for BlairOneW key prefix
   ab208ae4456d. Read PROJECT_STATUS.md and REMOTE_REPEATER_ADMIN.md first for
   current deployment/live results. Seven HA response services, separate manual

@@ -5,6 +5,37 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
 
+### 0.7.2 Map Tile Identification Fix
+
+- External HA serves `Referrer-Policy: no-referrer`; OSM browser tiles require
+  a valid Referer. Set Leaflet tile images to `strict-origin` so only the HA
+  origin is sent to the tile provider, without disclosing page paths or changing
+  HA's global privacy policy. No proxy, cache bypass, retry loop or provider swap.
+- Frontend cache key and integration version bumped to 0.7.2. Browser regression
+  uses a no-referrer document and intercepted tiles; asserts origin-only Referer
+  and image policy at four viewport widths without hitting OSM's public servers.
+- Deployment verification pending for this checkpoint. No radio settings change.
+
+### BlairOneW Post-Login Acceptance (2026-10-09)
+
+- User entered the remote repeater password in HA. Subsequent inspection found
+  LOGIN_SUCCESS, is_admin true, permissions 1, ACL permissions 3 and firmware
+  protocol level 2. Password was not read or exported. Login establishes access;
+  it does not itself request status or fill measurement entities.
+- Safe read-only checks over the existing HA-owned connection all succeeded:
+  remote_status 1844 ms, remote_command `get tx` 1891 ms, remote_neighbors 917 ms.
+  Status: battery 4.185 V, uptime 8702 seconds, queue 0, last RSSI -51 dBm,
+  last SNR 12 dB. Transmit power: 22 dBm. Neighbor response: zero entries.
+  These are BlairOneW readings, not the local Heltec's battery reading.
+- HA entities reflect those measurements and online is on. Cumulative tracked
+  counters at this check: six successes, three failures (including earlier user
+  attempts). No settings, clock, route or credentials were changed; no restart
+  or software deployment was needed. Range was stopped throughout the checks.
+- Firmware/board identification, telemetry and trace remain unvalidated live.
+  Cached route is still unknown (-1); trace requires a known route. Battery
+  percentage and charging state are not inferred from voltage. The historical
+  first-test failures below predate this successful authenticated validation.
+
 ### 0.7.1 Remote Repeater Administration (Deployed)
 
 - Implemented seven HA response-capable services: remote_status, remote_telemetry,
@@ -42,9 +73,8 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
   hardware is powered off. Role/path are contact metadata. Integration system-log
   check had no MeshCore Sender errors. An unrelated pre-existing
   `binary_sensor.meshcore_blaironew_ab208ae4456d_contact` was left untouched.
-- **Next acceptance step:** user logs in via `/meshcore` > Repeaters > BlairOneW
-  with its **remote repeater administrator password**, not the bridge BLE PIN.
-  Then retry status/get tx; only query neighbors after status succeeds. Firmware,
+- **Login/status/get tx/neighbors acceptance completed:** see the newer live
+  results above. Firmware,
   board, telemetry and known-route trace await conservative live validation.
   Do not guess credentials or change repeater settings. CLI has a two-minute
   cooldown after timeout. No build/deployment/test process remains running.

@@ -279,6 +279,8 @@ class MeshCoreWorkspace extends HTMLElement {
       if(!container.isConnected || this.view!=='map') return;
       this.leafletMap=L.map(container,{zoomControl:true,scrollWheelZoom:true,zoomAnimation:false}).setView([39,-98],4);
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+        // OSM requires browser identification even when HA uses no-referrer.
+        referrerPolicy:'strict-origin',
         maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
       }).addTo(this.leafletMap);
       this.mapResize=new ResizeObserver(()=>this.leafletMap?.invalidateSize());
