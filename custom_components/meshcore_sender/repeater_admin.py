@@ -116,19 +116,22 @@ def parse_binary(action, raw, count=8, offset=0):
     if len(data) < 4:
         raise ValueError("Short neighbor payload")
     total, returned = int.from_bytes(data[:2], "little"), int.from_bytes(data[2:4], "little")
-    if returned > count or returned > total or len(data) != 4 + returned * 9:
+    payload_length = 4 + returned * 9
+    padding = data[payload_length:]
+    # Encrypted datagrams can retain up to one AES block's zero padding.
+    if returned > count or returned > total or len(data) < payload_length or len(padding) > 15 or any(padding):
         raise ValueError("Invalid neighbor count or payload length")
     neighbors = [{"public_key_prefix": data[i:i+4].hex(),
                   "seconds_ago": int.from_bytes(data[i+4:i+8], "little"),
                   "snr": int.from_bytes(data[i+8:i+9], "little", signed=True) / 4}
-                 for i in range(4, len(data), 9)]
+                 for i in range(4, payload_length, 9)]
     return {"neighbor_count": total, "neighbors": neighbors, "offset": offset,
             "returned_count": returned, "truncated": offset + returned < total}
 
 
 def parse_cli(command, text):
     lower = command.lower()
-    stripped = text.strip()
+    stripped = text.rstrip("\x00").strip()
     if not stripped:
         raise ValueError("Empty CLI reply")
     if re.search(r"\b(unknown command|unsupported|not supported|invalid command)\b", stripped, re.I):

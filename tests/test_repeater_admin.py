@@ -123,6 +123,9 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(result["neighbor_count"], 20)
         self.assertEqual(result["neighbors"][0]["snr"], -1)
         self.assertTrue(result["truncated"])
+        self.assertEqual(admin.parse_binary("remote_neighbors", raw+"00"*15), result)
+        with self.assertRaises(ValueError):
+            admin.parse_binary("remote_neighbors", raw+"ff")
         with self.assertRaises(ValueError):
             admin.parse_binary("remote_neighbors", raw[:-2])
 
@@ -132,7 +135,7 @@ class SafetyTests(unittest.TestCase):
         self.assertEqual(result["telemetry"][1]["type"], "temperature")
 
     def test_cli_parsing(self):
-        for text in ("22", "> 22", "TX: 22 dBm"):
+        for text in ("22", "> 22", "TX: 22 dBm", "22\x00\x00"):
             self.assertEqual(admin.parse_cli("get tx", text)["tx_power"], 22)
         self.assertEqual(admin.parse_cli("board", "RAK3401")["board"], "RAK3401")
         self.assertEqual(admin.parse_cli("ver", "v1.12")["firmware"], "v1.12")

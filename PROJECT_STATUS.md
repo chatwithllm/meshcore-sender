@@ -27,6 +27,10 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ### Earlier Checkpoints
 
+- Protocol hardening 0.7.1: accept only bounded zero padding after binary neighbor
+  data and trim trailing CLI NUL padding. No extra transmissions or settings
+  changes. Added parser regression cases; deploying after 0.7.0 recovery checks.
+
 - 0.6.4 read-only self-telemetry diagnostic prepared for deployment to answer
   whether the actual Heltec reports temperature/humidity. Admin-only websocket
   `meshcore_sender/telemetry` requires an explicit native entry, uses the existing
