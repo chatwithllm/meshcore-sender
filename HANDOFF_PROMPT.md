@@ -10,6 +10,15 @@ START HERE
   Do not guess credentials or modify repeater settings. Saved BLE PIN is not the
   repeater's remote administrator password. Preserve existing AI/controller
   settings. The unrelated untracked HANDOFF.md was not overwritten.
+- 0.7.1 deployed through HACS (`cb7518e`), verified backup `3f20e21d`, config
+  checks/restarts and exact controller/favorite/AI retention. 165 Python tests
+  and four-width browser fixtures pass. Seven response actions registered;
+  sidebar module v=0.7.0. First live status and get tx both timed out cleanly at
+  20s; 18 entities exist, zero successes/two failures, unknown readings. Neighbors
+  intentionally not queried because status failed. No known route or saved
+  remote password. User asked to log in using BlairOneW's administrator password
+  (NOT BLE PIN), then retry safely. Do not infer offline/wrong password from
+  silence, or guess/change credentials/settings. No active deployment/test job.
 - 0.6.4 read-only self-telemetry diagnostic prepared: authenticated admin websocket
   `meshcore_sender/telemetry`, explicit native entry, own-radio prefix check,
   ten-second timeout, no active-test disruption or second connection. Returns

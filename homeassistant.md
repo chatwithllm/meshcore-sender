@@ -7,6 +7,11 @@ devices and a **Repeaters** sidebar view are implemented. See
 [REMOTE_REPEATER_ADMIN.md](REMOTE_REPEATER_ADMIN.md) for actions, authentication,
 read-only defaults, dashboard entities, bounded airtime, and protocol limitations.
 Deployment and actual BlairOneW results are recorded in PROJECT_STATUS.md.
+Backend parser hardening 0.7.1 is deployed as HACS revision `cb7518e`, after
+verified backup `3f20e21d` and configuration checks/restarts. All seven actions
+are registered. BlairOneW's first status/get tx requests timed out; remote login
+and successful RF replies await user validation. Neighbors were not requested
+because status failed. Eighteen tracked entities exist; readings stay unknown.
 
 ## Self-Telemetry Diagnostic (0.6.4)
 

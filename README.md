@@ -7,10 +7,14 @@ remote command control from an allowlisted contact or channel.
 ## Home Assistant
 
 The native Home Assistant integration provides an authenticated sidebar with Inbox,
-Compose, Range, Contacts, Commands and Map. It uses HA Bluetooth or a PIN-capable
+Compose, Range, Contacts, Commands, Repeaters and Map. It uses HA Bluetooth or a PIN-capable
 BLE bridge, without a Mac login or a separate Mac server. Remote commands can reuse
 supported tool-free HA conversation agents, with approved contacts and confirmation.
 The older server/App mode remains available but is not the current native deployment.
+Remote repeater administration adds response-capable inspection/login/trace actions
+and manually refreshed device entities, with read-only CLI defaults and explicit
+mutation permission. See [remote repeater administration](REMOTE_REPEATER_ADMIN.md)
+for credentials, dashboard setup, airtime safeguards and current live-test limits.
 
 See [Home Assistant setup](homeassistant.md), [current status and pipeline](PROJECT_STATUS.md),
 and [agent handover](HANDOFF_PROMPT.md). The Mac/server commands and environment

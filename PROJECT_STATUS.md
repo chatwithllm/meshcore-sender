@@ -5,7 +5,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
 
-### 0.7.0 Remote Repeater Administration
+### 0.7.1 Remote Repeater Administration (Deployed)
 
 - Implemented seven HA response-capable services: remote_status, remote_telemetry,
   remote_neighbors, remote_command, remote_login, remote_logout, trace.
@@ -19,8 +19,36 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
   ab208ae4456d8baa8500956f98cf0cab124385775e7007984780fefb420cb158.
   Preflight showed no running or finishing range test. Contact presence is not
   evidence of reachability. No password guessed or setting changed.
-- Implementation is being verified; deployment and read-only live results are
-  pending and will be appended below. See REMOTE_REPEATER_ADMIN.md.
+- Releases: `d5f880a` (0.7.0 feature), `cb7518e` (0.7.1 encrypted-padding fix).
+  HACS reports **installed_version cb7518e**, pending_upgrade false. Verified
+  HA backup **3f20e21d**, HACS downloads, configuration checks and two restarts
+  (feature, then parser hardening) completed. Frontend remains v=0.7.0 because
+  0.7.1 is backend-only. All seven actions have names, selectors, expected fields
+  and optional response support in HA's action registry. Live Safari checks were
+  deferred because the user was actively navigating that browser; API metadata
+  and four-width browser fixtures were verified instead.
+- Recovery: native radio available, 144 contacts/channels, stopped/not-finishing
+  range, exact controller/favorite/AI settings retained (remote enabled, two
+  controllers, three favorites and the same AI agent). No entity IDs renamed.
+- First live read-only BlairOneW checks: status **no_response, 20197 ms**;
+  `remote_command get tx / read_only` **no_response, 20001 ms**. No saved repeater
+  password; companion contact reports unknown route (`out_path_len: -1`, empty
+  path). Silence does not identify authentication, RF or routing as the cause.
+  `remote_neighbors` was **not sent** because status did not work. No live
+  telemetry, trace, login, logout, discovery or mutating command was sent.
+- HA created **18 new BlairOneW entities**: 15 sensors, online indicator and two
+  refresh buttons. Zero successful / two failed transactions; readings unknown.
+  Online is off with last_error no_response: this means no answer, not proof that
+  hardware is powered off. Role/path are contact metadata. Integration system-log
+  check had no MeshCore Sender errors. An unrelated pre-existing
+  `binary_sensor.meshcore_blaironew_ab208ae4456d_contact` was left untouched.
+- **Next acceptance step:** user logs in via `/meshcore` > Repeaters > BlairOneW
+  with its **remote repeater administrator password**, not the bridge BLE PIN.
+  Then retry status/get tx; only query neighbors after status succeeds. Firmware,
+  board, telemetry and known-route trace await conservative live validation.
+  Do not guess credentials or change repeater settings. CLI has a two-minute
+  cooldown after timeout. No build/deployment/test process remains running.
+  See REMOTE_REPEATER_ADMIN.md for password storage and protocol limitations.
 - Local verification: **165 Python tests** pass; geography tests, diff checks,
   and browser fixtures at 375/390/768/1366 px pass. Mobile authentication is
   visible and navigation does not overlap. Fixture values are not live results.
@@ -29,7 +57,7 @@ checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 - Protocol hardening 0.7.1: accept only bounded zero padding after binary neighbor
   data and trim trailing CLI NUL padding. No extra transmissions or settings
-  changes. Added parser regression cases; deploying after 0.7.0 recovery checks.
+  changes. Added parser regression cases; deployed and verified above.
 
 - 0.6.4 read-only self-telemetry diagnostic prepared for deployment to answer
   whether the actual Heltec reports temperature/humidity. Admin-only websocket
