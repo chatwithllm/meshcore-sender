@@ -21,7 +21,7 @@ const path = require('node:path');
         nodes:[{id:'dm:OptimusPrime',name:'OptimusPrime',kind:'node',public_key:'a'.repeat(64)}, {id:'chan:1',name:'Family Mesh',kind:'private'},
           {id:'dm:Long',name:'A rather long contact name for mobile overflow checks',kind:'repeater'},
           {id:'dm:Bethpage Solar',name:'Bethpage Solar',kind:'repeater',lat:36.38932,lon:-86.262},
-          {id:'dm:BlairOneW',name:'BlairOneW',kind:'repeater',lat:39.70739,lon:-85.99339},
+          {id:'dm:BlairOneW',name:'BlairOneW',kind:'repeater',public_key:'ab208ae4456d'+'b'.repeat(52),lat:39.70739,lon:-85.99339},
           {id:'dm:Toronto',name:'Toronto',kind:'repeater',lat:43.6532,lon:-79.3832}],
         messages:[{id:'one',conversation:'pk:abc',target:'dm:OptimusPrime',name:'OptimusPrime',sender:'OptimusPrime',text:'<img src=x onerror="window.hacked=true"> Hello',received_at:now,direction:'in',status:'received'},
           {id:'two',conversation:'chan:1',target:'chan:1',name:'Family Mesh',sender:'You',text:'Radio check',received_at:now-100,direction:'out',status:'broadcast'}],
@@ -30,6 +30,14 @@ const path = require('node:path');
         range:{server_now:now,running:false,targets:[],sent:0,acked:0,interval:30,log:[],per_target:{}}};
       document.querySelector('meshcore-workspace').hass = {callWS:async msg => {
         window.calls.push(msg);
+        if(msg.type==='call_service') {
+          const key=msg.service_data.target;
+          const observation={target_name:'BlairOneW',public_key:key,public_key_prefix:key.slice(0,12),
+            online:true,last_attempt_at:now,last_seen_at:now,request_successes:1,request_failures:0,
+            field_updated_at:{battery_voltage:now,uptime:now},battery_voltage:4.05,uptime:1234};
+          state.repeaters=[observation];
+          return {response:{request_success:true,online:true,round_trip_ms:642,...observation}};
+        }
         if(msg.type==='meshcore_sender/update_radio_pin') return {ok:true,message:'PIN saved on the bridge. Reconnecting to the radio.'};
         if(msg.action==='start') state.range={...state.range,running:true,targets:msg.targets,interval:msg.interval,
           started_by:'Fixture user', next_due_at:now+msg.interval,sent:3,acked:2,
@@ -80,6 +88,26 @@ const path = require('node:path');
     assert.ok((await page.locator('[aria-label="Final test summary"]').textContent()).includes('DM ACK 2/3'));
     assert.ok((await page.locator('[aria-label="Final test summary"]').textContent()).includes('Stop: Fixture user (HA)'));
     await page.screenshot({path:`/tmp/meshcore-workspace-summary-${width}.png`,fullPage:true});
+    await page.locator('nav').getByRole('button',{name:'Repeaters',exact:true}).click();
+    await page.locator('#admin-target').selectOption('ab208ae4456d'+'b'.repeat(52));
+    await page.getByRole('button',{name:'Status',exact:true}).click();
+    await page.getByText('Request completed',{exact:true}).waitFor();
+    assert.ok((await page.locator('.admin-values').textContent()).includes('4.05 V'));
+    await page.locator('#admin-command').fill('get tx');
+    await page.getByRole('button',{name:'Run command',exact:true}).click();
+    const adminCall=await page.evaluate(()=>window.calls.find(c=>c.service==='remote_command'));
+    assert.equal(adminCall.service_data.mode,'read_only');
+    assert.equal(adminCall.service_data.allow_mutation,undefined);
+    assert.equal(await page.locator('#admin-password').getAttribute('type'),'password');
+    assert.equal(await page.locator('#admin-password').isVisible(),true);
+    await page.screenshot({path:`/tmp/meshcore-workspace-repeaters-${width}.png`,fullPage:true});
+    const adminOverflow=await page.evaluate(()=>{
+      const root=document.querySelector('meshcore-workspace').shadowRoot;
+      return [...root.querySelectorAll('input,select,button,.admin-values,.admin-result')].filter(el=>{
+        const r=el.getBoundingClientRect();return r.width>0&&(r.right>innerWidth+1||r.left<0);
+      }).map(el=>el.tagName+':'+el.className);
+    });
+    assert.deepEqual(adminOverflow,[],`Repeater overflow at ${width}px`);
     await page.getByRole('button',{name:'Compose',exact:true}).click();
     await page.locator('#compose').fill('Hello');
     await page.locator('#search').fill('family');

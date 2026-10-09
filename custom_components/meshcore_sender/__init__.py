@@ -11,12 +11,14 @@ from .api import MeshCoreClient, MeshCoreError
 from .const import (CONF_ADDRESS, CONF_CONNECTION, CONF_HOST, CONF_PORT,
                     CONF_PASSPHRASE, CONF_URL, DOMAIN, PLATFORMS)
 from .coordinator import MeshCoreCoordinator
+from .admin_services import async_attach_admin, async_register_admin_services
 from .workspace import async_attach_history, async_attach_remote, async_setup_workspace, async_remove_workspace
 
 
 async def async_setup(hass, config):
     # The sidebar remains reachable even while a radio is awaiting reconnection.
     await async_setup_workspace(hass)
+    await async_register_admin_services(hass)
     return True
 
 
@@ -33,6 +35,7 @@ async def async_setup_entry(hass, entry):
         client = MeshCoreClient(async_get_clientsession(hass), entry.data[CONF_URL],
                                entry.data[CONF_PASSPHRASE])
     coordinator = MeshCoreCoordinator(hass, entry, client)
+    await async_attach_admin(hass, entry, coordinator)
     await async_attach_history(hass, entry, client)
     await async_attach_remote(hass, entry, coordinator)
     try:

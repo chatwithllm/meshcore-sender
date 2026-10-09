@@ -1,5 +1,13 @@
 # Home Assistant
 
+## Remote Repeater Administration (0.7.0)
+
+Seven response-capable remote administration actions, manually tracked repeater
+devices and a **Repeaters** sidebar view are implemented. See
+[REMOTE_REPEATER_ADMIN.md](REMOTE_REPEATER_ADMIN.md) for actions, authentication,
+read-only defaults, dashboard entities, bounded airtime, and protocol limitations.
+Deployment and actual BlairOneW results are recorded in PROJECT_STATUS.md.
+
 ## Self-Telemetry Diagnostic (0.6.4)
 
 An admin can request `meshcore_sender/telemetry` over HA's authenticated websocket

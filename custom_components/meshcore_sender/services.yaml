@@ -58,3 +58,262 @@ send_message:
       selector:
         text:
           multiline: true
+
+remote_status:
+  name: Remote status
+  description: Request live battery, uptime, queue and radio statistics. Manual refresh only.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    password:
+      name: Repeater password
+      description: Optional explicit password; otherwise a saved credential is used. HA action traces may retain submitted action data.
+      selector:
+        text:
+          type: password
+remote_telemetry:
+  name: Remote telemetry
+  description: Request advertised sensor readings without inventing unsupported measurements.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    password:
+      name: Repeater password
+      description: Optional explicit password; otherwise a saved credential is used. HA action traces may retain submitted action data.
+      selector:
+        text:
+          type: password
+remote_neighbors:
+  name: Remote neighbors
+  description: Request one bounded page of repeater neighbors. No automatic discovery or paging.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    password:
+      name: Repeater password
+      description: Optional explicit password; otherwise a saved credential is used. HA action traces may retain submitted action data.
+      selector:
+        text:
+          type: password
+    count:
+      name: Page size
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 16
+          mode: box
+    offset:
+      name: Page offset
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 65535
+          mode: box
+remote_command:
+  name: Remote command
+  description: Run one remote CLI command. Inspection only unless mutation is explicitly permitted.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    password:
+      name: Repeater password
+      description: Optional explicit password; otherwise a saved credential is used. HA action traces may retain submitted action data.
+      selector:
+        text:
+          type: password
+    command:
+      name: CLI command
+      required: true
+      example: get tx
+      selector:
+        text:
+    mode:
+      name: Mode
+      default: read_only
+      selector:
+        select:
+          options:
+            - read_only
+            - admin
+    allow_mutation:
+      name: Allow settings changes
+      description: Explicitly permits supported mutating commands. Mode alone does not authorize writes.
+      default: false
+      selector:
+        boolean:
+remote_login:
+  name: Remote login
+  description: Authenticate to one repeater. Saving a password is optional and uses protected HA storage, not encryption.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    password:
+      name: Repeater password
+      description: Optional explicit password; otherwise a saved credential is used. HA action traces may retain submitted action data.
+      selector:
+        text:
+          type: password
+    save_password:
+      name: Save credential
+      default: false
+      selector:
+        boolean:
+remote_logout:
+  name: Remote logout
+  description: Clear the companion login session. This does not revoke the remote ACL. Optionally forget the saved credential.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box
+    forget_password:
+      name: Forget saved credential
+      default: false
+      selector:
+        boolean:
+trace:
+  name: Trace repeater route
+  description: Trace a known route to the repeater and back. No route discovery, flood or settings changes.
+  fields:
+    target:
+      name: Repeater
+      description: Exact name or unambiguous public key prefix of at least 12 characters.
+      required: true
+      example: ab208ae4456d
+      selector:
+        text:
+    entry_id:
+      name: MeshCore connection
+      selector:
+        config_entry:
+          integration: meshcore_sender
+    timeout:
+      name: Transaction timeout
+      description: Total time including an optional login. No automatic retries.
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 60
+          unit_of_measurement: s
+          mode: box

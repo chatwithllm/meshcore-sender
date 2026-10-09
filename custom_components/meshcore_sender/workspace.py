@@ -176,6 +176,7 @@ async def websocket_workspace(hass, connection, msg):
             "history_supported": hasattr(client, "history"), **history,
             "remote": client.remote.snapshot() if hasattr(client, "remote") else None,
             "agents": list_agents(hass),
+            "repeaters": list(chosen.repeater_admin.records.values()),
             "preview": preview,
         })
     except Exception as error:
@@ -237,7 +238,7 @@ async def async_setup_workspace(hass):
         await panel_custom.async_register_panel(
             hass, frontend_url_path="meshcore", webcomponent_name="meshcore-workspace",
             sidebar_title="MeshCore", sidebar_icon="mdi:radio-handheld",
-            module_url="/meshcore_sender_static/workspace.js?v=0.6.3",
+            module_url="/meshcore_sender_static/workspace.js?v=0.7.0",
             require_admin=True,
         )
         state["panel"] = True

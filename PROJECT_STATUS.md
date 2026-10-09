@@ -1,9 +1,31 @@
 # Project Status And Agent Handover
 
-Updated: 2026-10-06. This is the authoritative current-status summary. Older
+Updated: 2026-10-09. This is the authoritative current-status summary. Older
 checkpoints in `HANDOFF_PROMPT.md` describe history, not the current backlog.
 
 ## Current Checkpoint
+
+### 0.7.0 Remote Repeater Administration
+
+- Implemented seven HA response-capable services: remote_status, remote_telemetry,
+  remote_neighbors, remote_command, remote_login, remote_logout, trace.
+- Native transport only; one HA-owned radio, manual refresh, bounded neighbor
+  pages, no mutation without explicit allow_mutation, no automatic range/flood/
+  discovery actions. Strict source/tag matching, clean timeout/errors, redacted
+  credentials, optional saved passwords, persistent identity/counters.
+- Dynamic separate repeater device/entities and a responsive Repeaters sidebar
+  tab; existing range/controller/AI permissions and entity IDs are unchanged.
+- Live target verified in HA: BlairOneW, repeater,
+  ab208ae4456d8baa8500956f98cf0cab124385775e7007984780fefb420cb158.
+  Preflight showed no running or finishing range test. Contact presence is not
+  evidence of reachability. No password guessed or setting changed.
+- Implementation is being verified; deployment and read-only live results are
+  pending and will be appended below. See REMOTE_REPEATER_ADMIN.md.
+- Local verification: **165 Python tests** pass; geography tests, diff checks,
+  and browser fixtures at 375/390/768/1366 px pass. Mobile authentication is
+  visible and navigation does not overlap. Fixture values are not live results.
+
+### Earlier Checkpoints
 
 - 0.6.4 read-only self-telemetry diagnostic prepared for deployment to answer
   whether the actual Heltec reports temperature/humidity. Admin-only websocket

@@ -1,6 +1,15 @@
 TASK: continue the native MeshCore Home Assistant integration and workspace
 
 START HERE
+- 2026-10-09: 0.7.0 remote repeater admin implemented for BlairOneW key prefix
+  ab208ae4456d. Read PROJECT_STATUS.md and REMOTE_REPEATER_ADMIN.md first for
+  current deployment/live results. Seven HA response services, separate manual
+  tracked devices and Repeaters UI; read-only defaults, explicit mutation opt-in,
+  shared lock, bounded pages/timeouts, no polling/automatic discovery, credential
+  redaction. Native HA transport only. Older checkpoints below remain history.
+  Do not guess credentials or modify repeater settings. Saved BLE PIN is not the
+  repeater's remote administrator password. Preserve existing AI/controller
+  settings. The unrelated untracked HANDOFF.md was not overwritten.
 - 0.6.4 read-only self-telemetry diagnostic prepared: authenticated admin websocket
   `meshcore_sender/telemetry`, explicit native entry, own-radio prefix check,
   ten-second timeout, no active-test disruption or second connection. Returns

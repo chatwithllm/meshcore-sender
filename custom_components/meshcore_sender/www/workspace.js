@@ -59,6 +59,9 @@ class MeshCoreWorkspace extends HTMLElement {
     this.remoteDraft = null;
     this.aiPreviewText = '';
     this.aiPreview = null;
+    this.repeaterTarget = '';
+    this.adminCommand = 'get tx';
+    this.adminResult = null;
   }
   set hass(value) { this._hass = value; if (this.isConnected && !this.timer) this.start(); }
   connectedCallback() { if (this._hass) this.start(); }
@@ -82,7 +85,7 @@ class MeshCoreWorkspace extends HTMLElement {
         this.messagePrefix = data.range.running ? data.range.prefix : data.settings?.prefix || 'ping';
         this.targets = new Set(data.range.running ? data.range.targets : data.settings?.targets || (data.settings?.target ? [data.settings.target] : []));
       }
-      const signature = JSON.stringify([data.nodes, data.messages, data.favorites, data.available, data.health?.radio_ok, data.entries, data.remote, data.agents]);
+      const signature = JSON.stringify([data.nodes, data.messages, data.favorites, data.available, data.health?.radio_ok, data.entries, data.remote, data.agents, data.repeaters]);
       const changed = this.signature !== signature || this.pendingRender;
       this.data = data;
       this.entryId = data.entry_id;
@@ -159,6 +162,26 @@ class MeshCoreWorkspace extends HTMLElement {
   }
   contacts() {
     return `<section class="tool"><h2>Contacts & channels</h2>${this.picker()}<p class="muted">${this.data?.nodes.length || 0} available · ${this.data?.favorites.length || 0} favorites</p></section>`;
+  }
+  repeatersView() {
+    const nodes=(this.data?.nodes||[]).filter(n=>n.kind==='repeater'&&n.public_key).sort((a,b)=>a.name.localeCompare(b.name));
+    const record=(this.data?.repeaters||[]).find(r=>r.public_key===this.repeaterTarget);
+    const fresh=record?.last_attempt_at && Date.now()/1000-record.last_attempt_at<7200;
+    const state=fresh?(record.online===true?'Responding':record.online===false?'No response':'Unknown'):'Not checked';
+    const disabled=this.busy||!this.repeaterTarget?'disabled':'';
+    const values=[['battery_voltage','Battery','V'],['uptime','Uptime','s'],['queue_length','TX queue',''],['tx_power','TX power','dBm'],['last_rssi','Last RSSI','dBm'],['last_snr','Last SNR','dB'],['neighbor_count','Neighbors',''],['firmware','Firmware',''],['board','Board',''],['radio','Radio','']];
+    return `<section class="tool"><div class="section-title"><h2>Repeater administration</h2><span class="live">${escapeHTML(state)}</span></div><label class="field-label" for="admin-target">Repeater</label><select id="admin-target"><option value="">Select repeater</option>${nodes.map(n=>`<option value="${escapeHTML(n.public_key)}" ${this.repeaterTarget===n.public_key?'selected':''}>${escapeHTML(n.name)} · ${escapeHTML(n.public_key.slice(0,12))}</option>`).join('')}</select><div class="actions admin-actions">${[['remote_status','pulse','Status'],['remote_telemetry','thermometer','Telemetry'],['remote_neighbors','access-point-network','Neighbors'],['trace','routes','Trace']].map(([action,i,label])=>`<button data-admin-action="${action}" ${disabled}>${icon(i)} ${label}</button>`).join('')}</div><div class="tool-grid"><div><dl class="admin-values">${values.map(([key,label,unit])=>{const recent=record?.field_updated_at?.[key]&&Date.now()/1000-record.field_updated_at[key]<7200;return `<div><dt>${label}</dt><dd>${recent&&record[key]!=null?`${escapeHTML(record[key])} ${unit}`:'—'}</dd></div>`;}).join('')}</dl><p class="muted">${record?.last_attempt_at?`Last checked ${timeLabel(record.last_attempt_at)} · ${record.request_successes} successful · ${record.request_failures} failed`:'No observations'}</p><form id="admin-command-form"><label class="field-label" for="admin-command">Read-only CLI</label><input id="admin-command" list="admin-command-options" maxlength="150" value="${escapeHTML(this.adminCommand)}"><datalist id="admin-command-options">${['get tx','get radio','ver','board','clock','neighbors','stats-core','stats-radio','stats-packets'].map(c=>`<option value="${c}"></option>`).join('')}</datalist><div class="actions admin-actions"><button ${disabled}>${icon('console')} Run command</button></div></form></div><aside class="info"><h3>Authentication</h3><form id="admin-login-form"><label class="field-label" for="admin-password">Repeater password</label><input id="admin-password" type="password" autocomplete="new-password" maxlength="64"><label class="command-toggle"><input id="admin-save-password" type="checkbox"> Save credential in HA</label><div class="actions admin-actions"><button ${disabled}>${icon('login')} Login</button><button type="button" data-admin-action="remote_logout" ${disabled}>${icon('logout')} Logout</button></div></form><details><summary>Forget saved credential</summary><button id="admin-forget" ${disabled}>${icon('key-remove')} Logout & forget</button></details></aside></div>${this.adminResult?`<div class="admin-result" role="status"><strong>${escapeHTML(this.adminResult.request_success?'Request completed':this.adminResult.error||'Request failed')}</strong><span>${escapeHTML(this.adminResult.message||this.adminResult.reply||'')}</span>${this.adminResult.round_trip_ms!=null?`<small>${this.adminResult.round_trip_ms} ms</small>`:''}<details><summary>Response details</summary><pre>${escapeHTML(JSON.stringify(this.adminResult,null,2))}</pre></details></div>`:''}</section>`;
+  }
+  async repeaterAction(service, fields={}) {
+    if(this.busy||!this.repeaterTarget) return;
+    this.busy=true;this.adminResult=null;this.render();
+    try {
+      const reply=await this._hass.callWS({type:'call_service',domain:'meshcore_sender',service,
+        service_data:{entry_id:this.entryId,target:this.repeaterTarget,...fields},return_response:true});
+      this.adminResult=reply.response;
+      await this.refresh();
+    } catch(err) {this.adminResult={request_success:false,error:'request_failed',message:err.message||'Request failed'};}
+    finally {this.busy=false;this.render();}
   }
   commandsView() {
     const remote=this.data.remote;
@@ -364,7 +387,7 @@ class MeshCoreWorkspace extends HTMLElement {
     this.disposeMap();
     this.shadowRoot.innerHTML = `<style>${MeshCoreWorkspace.styles}</style><div class="shell"><header class="app-heading"><ha-menu-button id="ha-menu"></ha-menu-button><h1>MeshCore</h1><div id="connection" class="connection"></div>${this.data?.pin_update_supported?`<button class="icon" id="radio-settings" title="Update radio PIN" aria-label="Update radio PIN">${icon('key-outline')}</button>`:''}<button class="icon" id="refresh" title="Refresh workspace" aria-label="Refresh workspace">${icon('refresh')}</button></header>
       ${this.data?.entries.length>1?`<label class="radio-picker">Radio<select id="radio">${this.data.entries.map(e=>`<option value="${escapeHTML(e.id)}" ${e.id===this.entryId?'selected':''}>${escapeHTML(e.name)}</option>`).join('')}</select></label>`:''}
-      <nav aria-label="MeshCore views">${[['inbox','message-text-outline','Inbox'],['compose','square-edit-outline','Compose'],['range','signal-distance-variant','Range'],['contacts','account-multiple-outline','Contacts'],['commands','shield-account-outline','Commands'],['map','map-outline','Map']].map(([id,i,label])=>`<button data-view="${id}" aria-current="${this.view===id?'page':'false'}" class="${this.view===id?'active':''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="feedback" role="status"></div><main>${!this.data?'<div class="loading">Connecting to your radio workspace…</div>':!this.data.history_supported?'<section class="tool"><h2>Native radio connection required</h2><p>This inbox workspace currently supports the Bluetooth and BLE bridge connections. Existing server-mode controls remain available on the device page.</p></section>':this.view==='inbox'?this.inbox():this.view==='compose'?this.compose():this.view==='range'?this.rangeView():this.view==='map'?this.mapView():this.view==='commands'?this.commandsView():this.contacts()}</main></div>`;
+      <nav aria-label="MeshCore views">${[['inbox','message-text-outline','Inbox'],['compose','square-edit-outline','Compose'],['range','signal-distance-variant','Range'],['contacts','account-multiple-outline','Contacts'],['commands','shield-account-outline','Commands'],['repeaters','access-point','Repeaters'],['map','map-outline','Map']].map(([id,i,label])=>`<button data-view="${id}" aria-current="${this.view===id?'page':'false'}" class="${this.view===id?'active':''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="feedback" role="status"></div><main>${!this.data?'<div class="loading">Connecting to your radio workspace…</div>':!this.data.history_supported?'<section class="tool"><h2>Native radio connection required</h2><p>This inbox workspace currently supports the Bluetooth and BLE bridge connections. Existing server-mode controls remain available on the device page.</p></section>':this.view==='inbox'?this.inbox():this.view==='compose'?this.compose():this.view==='range'?this.rangeView():this.view==='map'?this.mapView():this.view==='commands'?this.commandsView():this.view==='repeaters'?this.repeatersView():this.contacts()}</main></div>`;
     this.bind(); this.updateStatus(); this.updateRange(); this.byteCount();
     const messages = this.shadowRoot.querySelector('.messages');
     if (messages) messages.scrollTop = bottom ? messages.scrollHeight : scroll;
@@ -382,6 +405,12 @@ class MeshCoreWorkspace extends HTMLElement {
     root.querySelectorAll('.target input').forEach(el=>el.onchange=()=>{el.checked?this.targets.add(el.value):this.targets.delete(el.value);this.render();});
     const on = (id,event,handler) => { const el=root.getElementById(id); if(el) el[event]=handler; };
     on('refresh','onclick',()=>this.refresh());
+    on('admin-target','onchange',e=>{this.repeaterTarget=e.target.value;this.adminResult=null;this.render();});
+    on('admin-command','oninput',e=>{this.adminCommand=e.target.value;});
+    root.querySelectorAll('[data-admin-action]').forEach(el=>el.onclick=()=>this.repeaterAction(el.dataset.adminAction));
+    on('admin-command-form','onsubmit',e=>{e.preventDefault();this.repeaterAction('remote_command',{command:this.adminCommand,mode:'read_only'});});
+    on('admin-login-form','onsubmit',e=>{e.preventDefault();const input=root.getElementById('admin-password');const password=input.value;input.value='';this.repeaterAction('remote_login',{...(password?{password}:{}),save_password:root.getElementById('admin-save-password').checked});});
+    on('admin-forget','onclick',()=>this.repeaterAction('remote_logout',{forget_password:true}));
     on('radio-settings','onclick',()=>this.openPinDialog());
     on('map-fit','onclick',()=>this.fitMap());
     on('map-search','oninput',e=>{this.mapQuery=e.target.value;this.updateMap();this.fitMap();});
@@ -479,6 +508,8 @@ class MeshCoreWorkspace extends HTMLElement {
     progress.value=r.running? r.next_due_at?Math.max(0,Math.min(1,1-seconds/r.interval)):1:0;
   }
   static styles = `
+    @media(max-width:700px){nav[aria-label="MeshCore views"]{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));row-gap:2px}nav[aria-label="MeshCore views"] button{width:100%;min-width:0;white-space:normal}.inbox{height:calc(100dvh - 230px)!important}.info:has(#admin-login-form){display:block}#admin-password,#admin-command,#admin-target{font-size:16px}.tool:has(#admin-target) .section-title{gap:12px;align-items:baseline}.tool:has(#admin-target) h2{font-size:18px}}
+    #admin-target,#admin-password,#admin-command{width:100%}.admin-actions{flex-wrap:wrap;margin:16px 0}.admin-values{margin:0}.admin-values>div{display:flex;gap:16px;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--divider-color);padding:10px 0}.admin-values dt{color:var(--secondary-text-color);flex-shrink:0}.admin-values dd{margin:0;text-align:right;overflow-wrap:anywhere;min-width:0}.admin-result{border-top:1px solid var(--divider-color);padding:16px 0;display:grid;gap:8px}.admin-result pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;font-size:12px}.admin-result span{overflow-wrap:anywhere}
     .range-log section{white-space:pre-line;overflow-wrap:anywhere;border-bottom:1px solid var(--divider-color);padding-bottom:8px}
     .command-toggle,.controller-row{display:flex;align-items:center;gap:12px;min-height:48px}.controller-list{border-block:1px solid var(--divider-color);max-height:300px;overflow:auto;margin-bottom:24px}.controller-row{padding:8px 0;border-bottom:1px solid var(--divider-color)}.controller-row span{flex:1;overflow-wrap:anywhere}.controller-row small{color:var(--secondary-text-color);font-size:11px}.controller-row input,.command-toggle input{width:20px;height:20px;flex-shrink:0}.command-save{margin-top:20px;align-items:center;flex-wrap:wrap}.command-history{max-height:440px;overflow:auto}.command-history article{padding:12px 0;border-bottom:1px solid var(--divider-color)}.command-history article>div{display:flex;gap:12px;justify-content:space-between}.command-history p{font-size:13px;overflow-wrap:anywhere;margin-bottom:0}.command-history time{font-size:12px;white-space:nowrap}#remote-agent{width:100%}
     .map-layout #map-list{height:clamp(480px,60dvh,700px)}.map-layout>div{display:flex;flex-direction:column;min-width:0}.map-layout #map-canvas{flex:1;min-height:520px}@media(max-width:700px){.map-layout #map-list{height:clamp(360px,55dvh,560px)}.map-layout>div{display:block}.map-layout #map-canvas{min-height:0;height:340px}}

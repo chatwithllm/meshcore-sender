@@ -61,6 +61,7 @@ class WorkspaceTests(unittest.IsolatedAsyncioTestCase):
         self.client = SimpleNamespace(request=AsyncMock(return_value={"running": False}),
             history=SimpleNamespace(snapshot=Mock(return_value={"messages": [], "favorites": []}), favorite=Mock()))
         self.coordinator = SimpleNamespace(client=self.client, entry=SimpleNamespace(entry_id="entry", title="Radio"),
+            repeater_admin=SimpleNamespace(records={}),
             data={"nodes": [{"id": "dm:OptimusPrime", "name": "OptimusPrime"}], "health": {"radio_ok": True}},
             last_update_success=True, action=AsyncMock(), setting=Mock(return_value=None), save_setting=Mock())
         self.hass = SimpleNamespace(data={"meshcore_sender": {"entry": self.coordinator}})

@@ -12,6 +12,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         MeshCoreBinarySensor(coordinator, "radio", "Radio connected"),
         MeshCoreBinarySensor(coordinator, "range", "Range test running"),
     ])
+    from .repeater_entity import async_add_repeater_entities
+    async_add_repeater_entities(coordinator, entry, async_add_entities, "binary_sensor")
 
 
 class MeshCoreBinarySensor(MeshCoreEntity, BinarySensorEntity):

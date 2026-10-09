@@ -14,6 +14,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         MeshCoreButton(coordinator, "start", "Start range test"),
         MeshCoreButton(coordinator, "stop", "Stop range test"),
     ])
+    from .repeater_entity import async_add_repeater_entities
+    async_add_repeater_entities(coordinator, entry, async_add_entities, "button")
 
 
 class MeshCoreButton(MeshCoreEntity, ButtonEntity):

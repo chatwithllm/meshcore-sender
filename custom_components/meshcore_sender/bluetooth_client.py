@@ -117,6 +117,9 @@ class NativeMeshCoreClient:
 
     def _receive(self, event):
         payload = event.payload
+        # CLI replies are not chat or inbound AI commands and may echo credentials.
+        if payload.get("txt_type") == 1:
+            return
         prefix = payload.get("pubkey_prefix")
         contact = self.mc.get_contact_by_key_prefix(prefix) if prefix and self.mc else None
         self.last_message = {"text": payload.get("text", ""),

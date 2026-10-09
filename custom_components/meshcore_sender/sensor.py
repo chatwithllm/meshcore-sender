@@ -14,6 +14,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ("broadcasts", "Channel broadcasts"), ("interval", "Active test interval"),
         ("started_by", "Test started by"),
     )] + [MeshCoreBatteryVoltage(coordinator)])
+    from .repeater_entity import async_add_repeater_entities
+    async_add_repeater_entities(coordinator, entry, async_add_entities, "sensor")
 
 
 class MeshCoreBatteryVoltage(MeshCoreEntity, SensorEntity):
